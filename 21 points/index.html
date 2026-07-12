@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>血工坊 · BLOODWORKS 21</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#14181d; --panel2:#1c222a; --ink:#c9d1d9; --dim:#7d8792;
+    --blood:#a01e2b; --blood2:#d63347; --rust:#b5651d; --brass:#c9a24b;
+    --acid:#7bd389; --gold:#e8c65a; --void:#5a3d8a; --line:#2a323c;
+    --shadow:0 8px 30px rgba(0,0,0,.6);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #191013 0%, transparent 60%),
+      radial-gradient(900px 600px at 90% 110%, #0f1320 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:"Georgia","Times New Roman",serif;
+    overflow:hidden; user-select:none;
+  }
+  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
+  .noise{position:fixed;inset:0;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    z-index:9999;}
+  .scan{position:fixed;inset:0;pointer-events:none;z-index:9998;opacity:.06;
+    background:repeating-linear-gradient(to bottom,#fff 0 1px,transparent 1px 3px);}
+
+  /* Top bar */
+  #topbar{display:flex;align-items:center;gap:14px;padding:8px 14px;background:linear-gradient(#181d24,#10141a);border-bottom:2px solid var(--line);box-shadow:var(--shadow);flex-wrap:wrap;}
+  .stat{display:flex;align-items:center;gap:6px;font-size:14px;background:#0e1217;border:1px solid var(--line);padding:5px 10px;border-radius:8px;}
+  .stat b{color:#fff;font-family:monospace;}
+  .stat .ic{width:16px;height:16px;display:inline-block}
+  .hpbar{width:120px;height:12px;background:#26090c;border:1px solid #4a1116;border-radius:6px;overflow:hidden;position:relative}
+  .hpfill{height:100%;background:linear-gradient(90deg,var(--blood),var(--blood2));transition:width .5s cubic-bezier(.2,.8,.2,1)}
+  .spacer{flex:1}
+  .btn{cursor:pointer;background:linear-gradient(#20262f,#161b21);border:1px solid #333c47;color:var(--ink);
+    padding:8px 14px;border-radius:8px;font-family:inherit;font-size:14px;letter-spacing:.5px;transition:.15s;position:relative;overflow:hidden}
+  .btn:hover{border-color:var(--brass);color:#fff;transform:translateY(-1px)}
+  .btn:active{transform:translateY(1px)}
+  .btn.p{background:linear-gradient(#7a1620,#4c0d13);border-color:#a01e2b}
+  .btn.p:hover{border-color:#ff4757;box-shadow:0 0 16px rgba(214,51,71,.4)}
+  .btn.g{background:linear-gradient(#4a3a12,#2b2109);border-color:var(--brass)}
+  .btn.small{padding:5px 9px;font-size:12px}
+  .btn:disabled{opacity:.35;cursor:not-allowed;transform:none;filter:grayscale(1)}
+
+  #stage{flex:1;position:relative;overflow:hidden}
+  .screen{position:absolute;inset:0;display:none;flex-direction:column;animation:fade .35s ease}
+  .screen.on{display:flex}
+  @keyframes fade{from{opacity:0;transform:scale(.99)}to{opacity:1;transform:none}}
+
+  /* Title */
+  #title{align-items:center;justify-content:center;text-align:center;gap:6px;padding:20px}
+  .logo{font-size:min(11vw,84px);letter-spacing:6px;font-weight:bold;line-height:.95;
+    background:linear-gradient(#e9e2d6,#b5651d 55%,#a01e2b);-webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 0 40px rgba(160,30,43,.35);filter:drop-shadow(0 3px 0 #000)}
+  .sub{color:var(--dim);letter-spacing:8px;font-size:14px;text-transform:uppercase}
+  .menu{display:flex;flex-direction:column;gap:10px;margin-top:22px;width:min(340px,86vw)}
+  .menu .btn{padding:13px;font-size:17px}
+  .seedrow{display:flex;gap:8px;align-items:center;margin-top:6px}
+  input[type=text]{background:#0c1015;border:1px solid var(--line);color:var(--ink);padding:10px;border-radius:8px;font-family:monospace;flex:1;font-size:14px}
+  input[type=text]:focus{outline:none;border-color:var(--brass)}
+
+  /* Map */
+  #map{padding:10px}
+  .maptitle{text-align:center;color:var(--brass);letter-spacing:3px;padding:6px;font-size:18px}
+  #mapwrap{flex:1;overflow:auto;position:relative}
+  #mapsvg{display:block;margin:0 auto}
+  .mnode{cursor:pointer;transition:.2s}
+  .mnode.locked{cursor:not-allowed;opacity:.35}
+  .mnode.avail circle,.mnode.avail rect,.mnode.avail polygon{filter:drop-shadow(0 0 8px var(--gold))}
+  .mnode:not(.locked):hover{transform:translateY(-2px)}
+
+  /* Duel */
+  #duel{padding:8px 12px;gap:6px}
+  .felt{flex:1;position:relative;border-radius:14px;
+    background:
+      radial-gradient(700px 300px at 50% 0%, #241016 0%, transparent 60%),
+      radial-gradient(600px 300px at 50% 100%, #101821 0%, transparent 60%),
+      linear-gradient(#14100f,#0c0f13);
+    border:2px solid #2a1c1c;box-shadow:inset 0 0 60px rgba(0,0,0,.7);overflow:hidden;display:flex;flex-direction:column}
+  .zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;position:relative;padding:4px}
+  .zone.dealer{border-bottom:1px dashed #33262a}
+  .zlabel{position:absolute;top:6px;left:12px;color:var(--dim);letter-spacing:2px;font-size:12px}
+  .zscore{position:absolute;top:4px;right:12px;font-family:monospace;font-size:20px;color:#fff;background:#0009;padding:2px 10px;border-radius:8px;border:1px solid var(--line)}
+  .cards{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;min-height:96px;align-items:center}
+  .cardw{perspective:700px}
+  .card{width:66px;height:94px;position:relative;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.8,.2,1);animation:deal .45s cubic-bezier(.2,.9,.2,1)}
+  @keyframes deal{from{transform:translateY(-120px) rotate(-25deg);opacity:0}to{transform:none;opacity:1}}
+  .card svg{position:absolute;inset:0;width:100%;height:100%;backface-visibility:hidden;border-radius:7px;box-shadow:0 4px 10px rgba(0,0,0,.6)}
+  .card .back{transform:rotateY(180deg)}
+  .card.flipped{transform:rotateY(180deg)}
+  .scoreboard{display:flex;gap:6px;align-items:center;justify-content:center;padding:4px;flex-wrap:wrap}
+  .chip{font-family:monospace;font-size:15px;padding:4px 10px;border-radius:8px;background:#0b1622;border:1px solid #1d3a5c;color:#7db4ff}
+  .mult{font-family:monospace;font-size:15px;padding:4px 10px;border-radius:8px;background:#2a0e12;border:1px solid #5c1d24;color:#ff6b7d}
+  .times{color:var(--dim);font-size:18px}
+  .dmgpop{position:absolute;font-family:monospace;font-weight:bold;font-size:34px;color:#fff;text-shadow:0 0 10px var(--blood2),0 2px 0 #000;pointer-events:none;animation:pop 1s ease forwards}
+  @keyframes pop{0%{transform:translateY(0) scale(.4);opacity:0}20%{transform:translateY(-10px) scale(1.2);opacity:1}100%{transform:translateY(-70px) scale(1);opacity:0}}
+  .controls{display:flex;gap:8px;justify-content:center;padding:4px;flex-wrap:wrap}
+  .enemyface{font-size:34px;filter:drop-shadow(0 0 12px #000)}
+
+  /* Relic tray */
+  #relictray{display:flex;gap:6px;padding:6px 12px;overflow-x:auto;background:#0d1116;border-top:1px solid var(--line);min-height:56px;align-items:center}
+  .relic{width:40px;height:40px;border-radius:8px;background:linear-gradient(#22262e,#14171c);border:1px solid #3a3f49;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:help;flex-shrink:0;position:relative;transition:.2s}
+  .relic:hover{transform:translateY(-3px);border-color:var(--brass);box-shadow:0 0 12px rgba(201,162,75,.4)}
+  .relic.rare{border-color:var(--void);box-shadow:0 0 8px rgba(90,61,138,.5)}
+  .relic.leg{border-color:var(--gold);box-shadow:0 0 10px rgba(232,198,90,.5)}
+
+  /* Cards choose / shop / reward overlays */
+  #overlay{position:absolute;inset:0;background:rgba(4,6,9,.82);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(3px);animation:fade .25s}
+  #overlay.on{display:flex}
+  .panel{background:linear-gradient(#161b22,#0f1319);border:2px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px;max-width:min(880px,94vw);max-height:92vh;overflow:auto}
+  .panel h2{margin:0 0 4px;color:var(--brass);letter-spacing:2px;font-size:22px;text-align:center}
+  .panel p.hint{color:var(--dim);text-align:center;margin:0 0 14px;font-size:13px}
+  .offer{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  .offcard{width:180px;background:linear-gradient(#1b212a,#12161c);border:2px solid #333c47;border-radius:12px;padding:14px;cursor:pointer;transition:.2s;position:relative}
+  .offcard:hover{transform:translateY(-6px);border-color:var(--brass);box-shadow:0 10px 26px rgba(0,0,0,.6)}
+  .offcard .ico{font-size:34px;text-align:center}
+  .offcard .nm{font-weight:bold;color:#fff;text-align:center;margin:6px 0 4px;font-size:15px}
+  .offcard .rar{position:absolute;top:6px;right:8px;font-size:10px;letter-spacing:1px;color:var(--dim)}
+  .offcard .ds{color:var(--dim);font-size:12.5px;line-height:1.45;min-height:52px}
+  .offcard .cost{text-align:center;margin-top:8px;color:var(--gold);font-family:monospace}
+  .offcard.rare{border-color:var(--void)}
+  .offcard.leg{border-color:var(--gold)}
+  .offcard.dis{opacity:.4;filter:grayscale(1);cursor:not-allowed;transform:none}
+
+  /* tooltip */
+  #tip{position:fixed;z-index:10000;pointer-events:none;max-width:260px;background:#0a0d11;border:1px solid var(--brass);border-radius:10px;padding:10px;font-size:13px;line-height:1.5;box-shadow:var(--shadow);display:none}
+  #tip .tn{color:var(--gold);font-weight:bold;display:block;margin-bottom:3px}
+  #tip .tr{color:var(--void);font-size:11px;letter-spacing:1px}
+
+  /* log */
+  #log{position:absolute;left:12px;bottom:70px;width:min(300px,60vw);pointer-events:none;z-index:20}
+  .logline{background:#0009;border-left:3px solid var(--brass);padding:3px 8px;margin-top:3px;font-size:12px;color:#cdd6df;border-radius:0 6px 6px 0;animation:slidein .3s}
+  @keyframes slidein{from{opacity:0;transform:translateX(-14px)}to{opacity:1}}
+
+  /* toast */
+  #toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:400;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+  .toastmsg{background:linear-gradient(#2a2010,#181205);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:10px;font-size:14px;letter-spacing:1px;box-shadow:var(--shadow);animation:tin .4s ease}
+  @keyframes tin{from{opacity:0;transform:translateY(-12px)}to{opacity:1}}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .kv{display:flex;justify-content:space-between;padding:6px 10px;background:#0e1217;border:1px solid var(--line);border-radius:8px;font-size:13px}
+  .kv b{color:#fff;font-family:monospace}
+  .ach{display:flex;gap:10px;align-items:center;padding:8px;background:#0e1217;border:1px solid var(--line);border-radius:8px;margin-top:6px}
+  .ach.lock{opacity:.4}
+  .ach .aic{font-size:24px}
+  .ach .at{font-weight:bold;color:#fff;font-size:14px}
+  .ach .ad{color:var(--dim);font-size:12px}
+  .diffopt{display:flex;flex-direction:column;gap:4px;padding:12px;border:2px solid var(--line);border-radius:12px;cursor:pointer;transition:.15s;background:#12161c;flex:1;min-width:150px}
+  .diffopt:hover{border-color:var(--brass)}
+  .diffopt.sel{border-color:var(--blood2);box-shadow:0 0 14px rgba(214,51,71,.35)}
+  .diffopt .dn{font-weight:bold;color:#fff;letter-spacing:1px}
+  .diffopt .dd{color:var(--dim);font-size:12px}
+  .modechip{padding:6px 12px;border:1px solid var(--line);border-radius:20px;cursor:pointer;font-size:12.5px;background:#12161c}
+  .modechip.sel{border-color:var(--acid);color:var(--acid)}
+  .modechip.lock{opacity:.4;cursor:not-allowed}
+  .frow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+  .center{text-align:center}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#2a323c;border-radius:6px}
+  ::-webkit-scrollbar-track{background:#0c0f13}
+</style>
+</head>
+<body>
+<div class="noise"></div><div class="scan"></div>
+<div id="app">
+  <div id="topbar">
+    <div class="stat"><span>🩸</span> <div class="hpbar"><div class="hpfill" id="hpfill"></div></div> <b id="hptxt">0/0</b></div>
+    <div class="stat"><span>⚙️</span> <b id="goldtxt">0</b></div>
+    <div class="stat"><span>🎯</span> 层 <b id="floortxt">0</b></div>
+    <div class="stat"><span>🌀</span> <b id="seedtxt" style="font-size:12px">-</b></div>
+    <div class="spacer"></div>
+    <button class="btn small" id="muteBtn">🔊 声音</button>
+    <button class="btn small" id="helpBtn">? 帮助</button>
+    <button class="btn small" id="menuBtn">☰ 菜单</button>
+  </div>
+
+  <div id="stage">
+    <!-- TITLE -->
+    <div class="screen on" id="title">
+      <div class="logo">血工坊</div>
+      <div class="sub">B L O O D W O R K S &nbsp; 2 1</div>
+      <div style="color:var(--dim);font-size:13px;margin-top:6px;max-width:520px;text-align:center;line-height:1.6">
+        工业锈蚀与血色仪式交织的地底赌坊。以 21 点之名与庄家对决，抽取血契、堆叠协同、深入七层深渊。
+      </div>
+      <div class="menu">
+        <button class="btn p" id="btnPlay">▶ 进入深渊</button>
+        <div class="seedrow">
+          <input type="text" id="seedInput" placeholder="输入种子（留空则随机）" maxlength="24">
+          <button class="btn small" id="btnRandSeed">🎲</button>
+        </div>
+        <button class="btn" id="btnDiff">难度 · 天赋 · 模式</button>
+        <button class="btn" id="btnMeta">🔩 永久养成</button>
+        <button class="btn" id="btnAch">🏆 成就</button>
+        <button class="btn small" id="btnHelp2">📖 玩法说明</button>
+      </div>
+      <div style="color:var(--dim);font-size:11px;margin-top:14px" id="metaHint"></div>
+    </div>
+
+    <!-- MAP -->
+    <div class="screen" id="map">
+      <div class="maptitle" id="mapTitle">深渊路线图</div>
+      <div id="mapwrap"><svg id="mapsvg"></svg></div>
+    </div>
+
+    <!-- DUEL -->
+    <div class="screen" id="duel">
+      <div class="felt">
+        <div id="log"></div>
+        <div class="zone dealer">
+          <div class="zlabel">庄家 · <span id="enemyName">THE DEALER</span> <span class="enemyface" id="enemyFace">🎭</span></div>
+          <div class="zscore" id="dealerScore">0</div>
+          <div class="cards" id="dealerCards"></div>
+        </div>
+        <div class="zone player">
+          <div class="zlabel">你</div>
+          <div class="zscore" id="playerScore">0</div>
+          <div class="cards" id="playerCards"></div>
+        </div>
+        <div class="scoreboard" id="scoreboard">
+          <span class="chip" id="sbChips">筹码 0</span><span class="times">×</span><span class="mult" id="sbMult">倍率 1</span>
+          <span style="color:var(--dim)">→</span><span style="font-family:monospace;font-size:18px;color:#fff" id="sbDmg">0</span>
+        </div>
+      </div>
+      <div class="controls" id="duelControls">
+        <button class="btn p" id="btnHit">🃏 要牌 HIT</button>
+        <button class="btn g" id="btnStand">✋ 停牌 STAND</button>
+        <button class="btn" id="btnAbility" style="display:none"></button>
+      </div>
+      <div id="relictray"></div>
+    </div>
+  </div>
+</div>
+
+<div id="overlay"><div class="panel" id="panel"></div></div>
+<div id="tip"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   血工坊 · BLOODWORKS 21  — 单文件 21点 Roguelite
+   工业/奇幻恐怖  |  种子RNG  |  协同构筑  |  路线图  |  养成 & 成就
+============================================================ */
+
+/* ---------- 种子 RNG (mulberry32 + xmur3) ---------- */
+function xmur3(str){let h=1779033703^str.length;for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),3432918353);h=(h<<13)|(h>>>19);}return function(){h=Math.imul(h^(h>>>16),2246822507);h=Math.imul(h^(h>>>13),3266489909);return (h^=h>>>16)>>>0;};}
+function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return ((t^(t>>>14))>>>0)/4294967296;};}
+class RNG{
+  constructor(seedStr){this.seedStr=seedStr;const s=xmur3(seedStr);this.a=s();this.fn=mulberry32(this.a);}
+  next(){return this.fn();}
+  int(min,max){return Math.floor(this.next()*(max-min+1))+min;}
+  pick(arr){return arr[Math.floor(this.next()*arr.length)];}
+  chance(p){return this.next()<p;}
+  shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(this.next()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+  weighted(entries){/*[[item,w]]*/let tot=0;for(const e of entries)tot+=e[1];let r=this.next()*tot;for(const e of entries){r-=e[1];if(r<=0)return e[0];}return entries[entries.length-1][0];}
+}
+function randomSeed(){const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<7;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
+
+/* ---------- 音频 (Web Audio) ---------- */
+const Audio2={
+  ctx:null,master:null,musicGain:null,sfxGain:null,muted:false,musicTimer:null,step:0,started:false,
+  init(){
+    if(this.ctx)return;
+    try{this.ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return;}
+    this.master=this.ctx.createGain();this.master.gain.value=0.9;this.master.connect(this.ctx.destination);
+    this.musicGain=this.ctx.createGain();this.musicGain.gain.value=0.24;this.musicGain.connect(this.master);
+    this.sfxGain=this.ctx.createGain();this.sfxGain.gain.value=0.5;this.sfxGain.connect(this.master);
+  },
+  resume(){if(this.ctx&&this.ctx.state==="suspended")this.ctx.resume();},
+  tone(freq,dur,type,gain,dest,glide){
+    if(!this.ctx||this.muted)return;
+    const o=this.ctx.createOscillator();const g=this.ctx.createGain();
+    o.type=type||"sine";o.frequency.setValueAtTime(freq,this.ctx.currentTime);
+    if(glide)o.frequency.exponentialRampToValueAtTime(glide,this.ctx.currentTime+dur);
+    g.gain.setValueAtTime(0.0001,this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(gain||0.3,this.ctx.currentTime+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,this.ctx.currentTime+dur);
+    o.connect(g);g.connect(dest||this.sfxGain);o.start();o.stop(this.ctx.currentTime+dur+0.02);
+  },
+  noise(dur,gain){
+    if(!this.ctx||this.muted)return;
+    const b=this.ctx.createBuffer(1,this.ctx.sampleRate*dur,this.ctx.sampleRate);const d=b.getChannelData(0);
+    for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);
+    const s=this.ctx.createBufferSource();s.buffer=b;const g=this.ctx.createGain();g.gain.value=gain||0.2;
+    const f=this.ctx.createBiquadFilter();f.type="highpass";f.frequency.value=1200;
+    s.connect(f);f.connect(g);g.connect(this.sfxGain);s.start();
+  },
+  sfx(name){
+    if(!this.ctx||this.muted)return;
+    switch(name){
+      case"deal":this.noise(0.08,0.12);this.tone(520,0.08,"triangle",0.15);break;
+      case"hit":this.tone(300,0.1,"square",0.14,null,420);break;
+      case"stand":this.tone(180,0.15,"sawtooth",0.13);break;
+      case"win":this.tone(440,0.12,"triangle",0.22);setTimeout(()=>this.tone(660,0.14,"triangle",0.22),90);setTimeout(()=>this.tone(880,0.18,"triangle",0.2),190);break;
+      case"lose":this.tone(200,0.25,"sawtooth",0.2,null,90);break;
+      case"bust":this.noise(0.3,0.25);this.tone(120,0.35,"sawtooth",0.22,null,60);break;
+      case"coin":this.tone(880,0.06,"square",0.18);setTimeout(()=>this.tone(1320,0.08,"square",0.16),60);break;
+      case"dmg":this.noise(0.12,0.2);this.tone(90,0.2,"sawtooth",0.24,null,50);break;
+      case"crit":this.tone(660,0.1,"square",0.25);setTimeout(()=>this.tone(1100,0.16,"square",0.24),70);this.noise(0.2,0.22);break;
+      case"unlock":this.tone(523,0.14,"triangle",0.22);setTimeout(()=>this.tone(784,0.16,"triangle",0.22),120);setTimeout(()=>this.tone(1046,0.22,"triangle",0.2),260);break;
+      case"click":this.tone(400,0.04,"square",0.1);break;
+      case"heal":this.tone(400,0.12,"sine",0.2,null,700);break;
+    }
+  },
+  startMusic(){
+    if(!this.ctx||this.started)return;this.started=true;
+    // 工业阴郁：低音鼓点 + 弦鸣 drone + 小调琶音
+    const scale=[196.00,233.08,261.63,293.66,311.13,349.23,392.00]; // G minor-ish
+    const bass=[49,49,58.27,43.65];
+    let self=this;this.step=0;
+    // drone
+    const drone=this.ctx.createOscillator();const dg=this.ctx.createGain();
+    drone.type="sawtooth";drone.frequency.value=49;dg.gain.value=0.05;
+    const df=this.ctx.createBiquadFilter();df.type="lowpass";df.frequency.value=220;
+    drone.connect(df);df.connect(dg);dg.connect(this.musicGain);drone.start();this.drone=drone;
+    this.musicTimer=setInterval(()=>{
+      if(self.muted||!self.ctx)return;
+      const s=self.step;
+      // 鼓
+      if(s%4===0){self.noise(0.12,0.10);self.tone(60,0.16,"sine",0.18,self.musicGain,40);}
+      if(s%8===4)self.noise(0.05,0.06);
+      // 低音
+      self.tone(bass[Math.floor(s/4)%bass.length],0.4,"triangle",0.06,self.musicGain);
+      // 琶音
+      if(s%2===0){const n=scale[(Math.floor(s/2)+ (s%16<8?0:2))%scale.length];self.tone(n*2,0.22,"triangle",0.045,self.musicGain);}
+      if(s%16===14)self.tone(scale[6]*2,0.3,"sine",0.05,self.musicGain);
+      self.step=(s+1)%64;
+    },220);
+  },
+  toggleMute(){this.muted=!this.muted;if(this.master)this.master.gain.value=this.muted?0:0.9;return this.muted;}
+};
+
+/* ---------- 存档 (localStorage) ---------- */
+const SAVE_KEY="bloodworks21_save_v1";
+const Meta={
+  data:null,
+  load(){
+    try{this.data=JSON.parse(localStorage.getItem(SAVE_KEY));}catch(e){this.data=null;}
+    if(!this.data)this.data={};
+    const d=this.data;
+    d.shards=d.shards||0;              // 永久货币「血晶」
+    d.runs=d.runs||0;
+    d.wins=d.wins||0;
+    d.bestFloor=d.bestFloor||0;
+    d.perks=d.perks||{};               // 已购买的永久升级 {id:level}
+    d.talents=d.talents||[];           // 已解锁的开局天赋 id
+    d.modes=d.modes||[];               // 已解锁模式 id
+    d.ach=d.ach||[];                   // 已获成就 id
+    d.highestDiff=d.highestDiff||0;    // 最高通关难度
+    this.save();
+  },
+  save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(this.data));}catch(e){}},
+  reset(){this.data=null;localStorage.removeItem(SAVE_KEY);this.load();}
+};
+
+/* ---------- 永久升级项 ---------- */
+const PERKS=[
+  {id:"maxhp",name:"血肉锻造",ico:"❤️‍🔥",desc:"每级开局最大生命 +8",max:5,cost:l=>3+l*2,apply:(g,l)=>{g.maxHp+=8*l;}},
+  {id:"gold",name:"锈金诱惑",ico:"⚙️",desc:"每级开局齿轮 +15",max:4,cost:l=>2+l*2,apply:(g,l)=>{g.gold+=15*l;}},
+  {id:"chips",name:"血契烙印",ico:"🩸",desc:"每级基础筹码 +2",max:5,cost:l=>3+l*2,apply:(g,l)=>{g.baseChips+=2*l;}},
+  {id:"mult",name:"仪式回响",ico:"🔺",desc:"每级基础倍率 +0.2",max:5,cost:l=>4+l*3,apply:(g,l)=>{g.baseMult+=0.2*l;}},
+  {id:"relic",name:"契约之匣",ico:"📦",desc:"开局额外随机血契 +1",max:2,cost:l=>6+l*4,apply:(g,l)=>{g.startRelics+=l;}},
+  {id:"reroll",name:"命运骰",ico:"🎲",desc:"每级商店/奖励免费刷新 +1",max:3,cost:l=>3+l*2,apply:(g,l)=>{g.freeRerolls+=l;}},
+  {id:"interest",name:"高利贷",ico:"💰",desc:"每级每层结算按齿轮5%计息(上限提高)",max:3,cost:l=>4+l*3,apply:(g,l)=>{g.interestCap+=l;}},
+];
+
+/* ---------- 开局天赋（可解锁） ---------- */
+const TALENTS=[
+  {id:"t_none",name:"血肉之躯",ico:"🧍",desc:"无特殊效果，纯净开局。",unlock:"默认解锁",always:true},
+  {id:"t_gambler",name:"赌徒之魂",ico:"🎰",desc:"开局齿轮翻倍，但最大生命 -15。",cond:m=>m.runs>=1},
+  {id:"t_ascetic",name:"苦修者",ico:"⛓️",desc:"开局多1个血契；但商店价格 +30%。",cond:m=>m.wins>=1},
+  {id:"t_berserk",name:"狂血",ico:"🩸",desc:"生命低于50%时，全部倍率 ×1.5。",cond:m=>m.bestFloor>=4},
+  {id:"t_hoarder",name:"囤积癖",ico:"🗃️",desc:"每层结束额外获得10齿轮；开局最大生命 -8。",cond:m=>m.wins>=2},
+];
+
+/* ---------- 游戏模式（可解锁） ---------- */
+const MODES=[
+  {id:"m_normal",name:"标准",desc:"标准七层深渊。",always:true},
+  {id:"m_hardcore",name:"死斗",desc:"庄家生命 +25%，掉落齿轮 +30%。",cond:m=>m.wins>=1},
+  {id:"m_swift",name:"疾行",desc:"路线更短(5层)，但每场庄家更强。",cond:m=>m.bestFloor>=5},
+  {id:"m_chaos",name:"混沌",desc:"每层开始随机获得或失去一个血契。",cond:m=>m.highestDiff>=2},
+];
+
+/* ---------- 难度预设 ---------- */
+const DIFFS=[
+  {id:0,name:"学徒",dd:"庄家生命-15%，多一次复活。",em:0.85,gold:1.0,revive:1},
+  {id:1,name:"工人",dd:"标准平衡的地底赌坊体验。",em:1.0,gold:1.0,revive:0},
+  {id:2,name:"血债",dd:"庄家生命+15%，庄家更贪婪。",em:1.15,gold:1.1,revive:0},
+  {id:3,name:"献祭",dd:"庄家生命+35%，商店昂贵，唯强者可活。",em:1.35,gold:1.25,revive:0},
+];
+
+/* ---------- 血契 / 遗物 (relics) — 协同引擎 ----------
+  hooks: onScore(ctx), passive说明; ctx = {chips,mult,xmult,hand,g,rng,handType,isWin}
+  为简化：结算时依次调用每个 relic.score(ctx) 修改 ctx.chips/ctx.mult
+--------------------------------------------------------- */
+const RELICS=[
+  // common
+  {id:"r_core",name:"锈蚀齿轮",ico:"⚙️",rar:0,desc:"每次结算 +12 筹码。",score:c=>{c.chips+=12;}},
+  {id:"r_edge",name:"血刃",ico:"🔪",rar:0,desc:"每次结算 +4 倍率。",score:c=>{c.mult+=4;}},
+  {id:"r_face",name:"面具收藏",ico:"🎭",rar:0,desc:"手中每张人头牌(J/Q/K) +8 筹码。",score:c=>{c.chips+=8*c.hand.filter(x=>x.rank>=11).length;}},
+  {id:"r_ace",name:"灰烬之A",ico:"🅰️",rar:0,desc:"手中每张A +3 倍率。",score:c=>{c.mult+=3*c.hand.filter(x=>x.rank===14).length;}},
+  {id:"r_low",name:"贫民徽记",ico:"🪙",rar:0,desc:"手中每张点数≤6的牌 +5 筹码。",score:c=>{c.chips+=5*c.hand.filter(x=>x.val<=6).length;}},
+  {id:"r_heart",name:"心之容器",ico:"♥️",rar:0,desc:"手中每张♥ +6 筹码。",score:c=>{c.chips+=6*c.hand.filter(x=>x.suit==="♥").length;}},
+  {id:"r_spade",name:"掘墓铲",ico:"♠️",rar:0,desc:"手中每张♠ +2 倍率。",score:c=>{c.mult+=2*c.hand.filter(x=>x.suit==="♠").length;}},
+  {id:"r_count",name:"节拍器",ico:"🎼",rar:0,desc:"手牌越多越强：每张牌 +4 筹码。",score:c=>{c.chips+=4*c.hand.length;}},
+  {id:"r_exact",name:"完美主义",ico:"🎯",rar:0,desc:"若手牌总点数正好21，+40 筹码。",score:c=>{if(c.total===21)c.chips+=40;}},
+  {id:"r_twin",name:"孪生锯齿",ico:"🔗",rar:0,desc:"手中存在对子(同点数)时 +5 倍率。",score:c=>{const m={};let has=false;c.hand.forEach(x=>{m[x.rank]=(m[x.rank]||0)+1;if(m[x.rank]>=2)has=true;});if(has)c.mult+=5;}},
+  // uncommon / rare
+  {id:"r_furnace",name:"熔炉之心",ico:"🔥",rar:1,desc:"结算倍率 ×1.4。",score:c=>{c.mult*=1.4;}},
+  {id:"r_greed",name:"贪婪之瞳",ico:"👁️",rar:1,desc:"当前齿轮每20点 +1 倍率。",score:c=>{c.mult+=Math.floor(c.g.gold/20);}},
+  {id:"r_charlie",name:"五指诅咒",ico:"🖐️",rar:1,desc:"手牌达5张且未爆牌，筹码 ×2。",score:c=>{if(c.hand.length>=5&&c.total<=21)c.chips*=2;}},
+  {id:"r_vampire",name:"吸血鬼牙",ico:"🧛",rar:1,desc:"每次赢得回合治疗3生命。",score:c=>{if(c.isWin){c.g.heal(3);}}},
+  {id:"r_glass",name:"玻璃匕首",ico:"🔷",rar:1,desc:"倍率 ×1.8，但每回合损失1生命。",score:c=>{c.mult*=1.8;c.g.hp-=1;}},
+  {id:"r_risk",name:"险中求",ico:"🎢",rar:1,desc:"若你的点数≥19，+6 倍率。",score:c=>{if(c.total>=19)c.mult+=6;}},
+  {id:"r_diamond",name:"钻石齿轮",ico:"♦️",rar:1,desc:"手中每张♦ +9 筹码且 +1 倍率。",score:c=>{const n=c.hand.filter(x=>x.suit==="♦").length;c.chips+=9*n;c.mult+=n;}},
+  {id:"r_snow",name:"雪球",ico:"❄️",rar:1,desc:"每消灭一个庄家永久 +6 基础筹码(结算)。",score:c=>{c.chips+=(c.g.snow||0);}},
+  // legendary
+  {id:"r_god",name:"庄家之神",ico:"👑",rar:2,desc:"结算倍率 ×2，并 +30 筹码。",score:c=>{c.mult*=2;c.chips+=30;}},
+  {id:"r_black",name:"黑血献祭",ico:"🩸",rar:2,desc:"生命越低倍率越高：每缺失10%最大生命 +2 倍率。",score:c=>{const miss=1-c.g.hp/c.g.maxHp;c.mult+=Math.floor(miss*10)*2;}},
+  {id:"r_infinity",name:"无限齿环",ico:"♾️",rar:2,desc:"筹码与倍率各再 +25%。",score:c=>{c.chips*=1.25;c.mult*=1.25;}},
+];
+function relicById(id){return RELICS.find(r=>r.id===id);}
+const RAR_NAME=["普通","稀有","传奇"];
+
+/* ---------- 卡牌工具 ---------- */
+const SUITS=["♠","♥","♦","♣"];
+const RANKS=[ // rank用于人头判断: A=14, K=13,Q=12,J=11; val为21点点数
+  {r:2,v:2,l:"2"},{r:3,v:3,l:"3"},{r:4,v:4,l:"4"},{r:5,v:5,l:"5"},{r:6,v:6,l:"6"},
+  {r:7,v:7,l:"7"},{r:8,v:8,l:"8"},{r:9,v:9,l:"9"},{r:10,v:10,l:"10"},
+  {r:11,v:10,l:"J"},{r:12,v:10,l:"Q"},{r:13,v:10,l:"K"},{r:14,v:11,l:"A"}
+];
+function buildDeck(rng){
+  let d=[];for(const s of SUITS)for(const rk of RANKS)d.push({suit:s,rank:rk.r,val:rk.v,label:rk.l});
+  return rng.shuffle(d);
+}
+function handTotal(hand){
+  let t=0,aces=0;
+  for(const c of hand){t+=c.val;if(c.rank===14)aces++;}
+  while(t>21&&aces>0){t-=10;aces--;}
+  return t;
+}
+function cardSVG(card,faceDown){
+  const red=(card.suit==="♥"||card.suit==="♦");
+  const col=red?"#d63347":"#1a1d22";
+  const bg=red?"linear":"dark";
+  if(faceDown){
+    return `<svg viewBox="0 0 66 94" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="bk" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a1417"/><stop offset="1" stop-color="#120a0c"/></linearGradient></defs>
+      <rect x="1" y="1" width="64" height="92" rx="7" fill="url(#bk)" stroke="#5a1c22" stroke-width="1.5"/>
+      <rect x="6" y="6" width="54" height="82" rx="5" fill="none" stroke="#7a2630" stroke-width="1" opacity=".6"/>
+      <circle cx="33" cy="47" r="15" fill="none" stroke="#a01e2b" stroke-width="1.5" opacity=".7"/>
+      <path d="M33 34 L40 47 L33 60 L26 47 Z" fill="#a01e2b" opacity=".6"/>
+      <text x="33" y="52" font-size="14" text-anchor="middle" fill="#e0c15a">⚙</text>
+    </svg>`;
+  }
+  return `<svg viewBox="0 0 66 94" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="1" width="64" height="92" rx="7" fill="#e9e0cd" stroke="#8a7d5f" stroke-width="1.2"/>
+    <text x="8" y="20" font-size="15" font-family="Georgia" fill="${col}" font-weight="bold">${card.label}</text>
+    <text x="8" y="34" font-size="14" fill="${col}">${card.suit}</text>
+    <text x="33" y="58" font-size="30" text-anchor="middle" fill="${col}">${card.suit}</text>
+    <text x="58" y="88" font-size="15" font-family="Georgia" fill="${col}" font-weight="bold" transform="rotate(180 58 82)">${card.label}</text>
+  </svg>`;
+}
+
+/* ---------- 敌人（庄家） ---------- */
+const ENEMIES=[
+  {n:"锈面荷官",f:"🎭",hp:60,ai:"basic"},
+  {n:"齿轮傀儡",f:"🤖",hp:70,ai:"basic"},
+  {n:"血肉牌手",f:"🩸",hp:80,ai:"greedy"},
+  {n:"面具收割者",f:"👺",hp:95,ai:"greedy"},
+  {n:"锅炉巫医",f:"🧪",hp:110,ai:"careful"},
+];
+const ELITES=[
+  {n:"双面主宰",f:"👹",hp:140,ai:"greedy",elite:true},
+  {n:"熔炉魔像",f:"🗿",hp:160,ai:"basic",elite:true},
+];
+const BOSSES=[
+  {n:"深渊庄家·长",f:"👑",hp:220,ai:"careful",boss:true},
+  {n:"血工坊·主宰",f:"😈",hp:260,ai:"greedy",boss:true},
+];
+
+/* ============================================================
+   游戏主控
+============================================================ */
+const G={
+  rng:null,seed:"",
+  hp:50,maxHp:50,gold:0,floor:0,
+  baseChips:5,baseMult:1,
+  relics:[],           // relic id 列表
+  map:null,mapPos:null,mapCol:0,
+  diff:1,talent:"t_none",mode:"m_normal",
+  freeRerolls:0,startRelics:0,interestCap:0,
+  snow:0,              // 雪球累计
+  revive:0,
+  // duel state
+  enemy:null,enemyHp:0,enemyMaxHp:0,deck:[],phand:[],dhand:[],dealerHidden:true,
+  busy:false,inRunUpgrades:[],
+  heal(n){this.hp=Math.min(this.maxHp,this.hp+n);updateTop();},
+};
+
+const $=id=>document.getElementById(id);
+const stage=$("stage");
+function showScreen(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on"));$(id).classList.add("on");}
+function updateTop(){
+  $("hpfill").style.width=Math.max(0,G.hp/G.maxHp*100)+"%";
+  $("hptxt").textContent=Math.max(0,Math.round(G.hp))+"/"+G.maxHp;
+  $("goldtxt").textContent=G.gold;
+  $("floortxt").textContent=G.floor;
+  $("seedtxt").textContent=G.seed||"-";
+}
+function toast(msg){const t=document.createElement("div");t.className="toastmsg";t.textContent=msg;$("toast").appendChild(t);setTimeout(()=>{t.style.transition=".4s";t.style.opacity=0;setTimeout(()=>t.remove(),400);},2200);}
+function logMsg(msg){const l=$("log");const d=document.createElement("div");d.className="logline";d.textContent=msg;l.appendChild(d);while(l.children.length>5)l.removeChild(l.firstChild);}
+
+/* ---------- tooltip ---------- */
+const tip=$("tip");
+function bindTip(el,name,rarName,desc){
+  el.addEventListener("mouseenter",e=>{tip.innerHTML=`<span class="tn">${name}</span>${rarName?`<span class="tr">${rarName}</span><br>`:""}${desc}`;tip.style.display="block";moveTip(e);});
+  el.addEventListener("mousemove",moveTip);
+  el.addEventListener("mouseleave",()=>tip.style.display="none");
+}
+function moveTip(e){const p=e.touches?e.touches[0]:e;let x=p.clientX+14,y=p.clientY+14;if(x+270>innerWidth)x=p.clientX-274;if(y+120>innerHeight)y=p.clientY-130;tip.style.left=x+"px";tip.style.top=y+"px";}
+
+/* ============================================================
+   开局 & 设置
+============================================================ */
+let SEL_DIFF=1,SEL_TALENT="t_none",SEL_MODE="m_normal";
+
+function startRun(){
+  Audio2.init();Audio2.resume();Audio2.startMusic();
+  const seedIn=$("seedInput").value.trim();
+  G.seed=seedIn||randomSeed();
+  G.rng=new RNG("BW21|"+G.seed+"|"+SEL_DIFF+"|"+SEL_MODE);
+  // 基础
+  G.maxHp=50;G.gold=8;G.baseChips=5;G.baseMult=1;G.relics=[];G.floor=0;
+  G.startRelics=0;G.freeRerolls=0;G.interestCap=0;G.snow=0;
+  G.diff=SEL_DIFF;G.talent=SEL_TALENT;G.mode=SEL_MODE;
+  G.revive=DIFFS[SEL_DIFF].revive;
+  G.inRunUpgrades=[];
+  // 应用永久升级
+  const tmp={maxHp:0,gold:0,baseChips:0,baseMult:0,startRelics:0,freeRerolls:0,interestCap:0};
+  for(const p of PERKS){const lv=Meta.data.perks[p.id]||0;if(lv>0)p.apply(tmp,lv);}
+  G.maxHp+=tmp.maxHp;G.gold+=tmp.gold;G.baseChips+=tmp.baseChips;G.baseMult+=tmp.baseMult;
+  G.startRelics+=tmp.startRelics;G.freeRerolls+=tmp.freeRerolls;G.interestCap+=tmp.interestCap;
+  // 天赋
+  applyTalent();
+  G.hp=G.maxHp;
+  // 开局血契
+  let n=1+G.startRelics;
+  for(let i=0;i<n;i++)grantRandomRelic(0.15);
+  Meta.data.runs++;Meta.save();
+  updateTop();renderRelics();
+  buildMap();
+  showScreen("map");
+  toast("种子："+G.seed+" · 难度："+DIFFS[SEL_DIFF].name);
+}
+function applyTalent(){
+  switch(G.talent){
+    case"t_gambler":G.gold*=2;G.maxHp-=15;break;
+    case"t_ascetic":grantRandomRelic(0.15);break;
+    case"t_hoarder":G.maxHp-=8;break;
+  }
+}
+function grantRandomRelic(legChance){
+  const owned=new Set(G.relics);
+  const pool=RELICS.filter(r=>!owned.has(r.id));
+  if(pool.length===0)return;
+  const rar=G.rng.weighted([[0,0.6],[1,0.3],[2,legChance||0.1]]);
+  let sub=pool.filter(r=>r.rar===rar);if(sub.length===0)sub=pool;
+  const r=G.rng.pick(sub);
+  G.relics.push(r.id);
+  return r;
+}
+
+/* ============================================================
+   路线图 (Slay the Spire 风)
+============================================================ */
+function mapDepth(){if(G.mode==="m_swift")return 5;return 7;}
+function buildMap(){
+  const rng=G.rng;
+  const depth=mapDepth();
+  const cols=[];
+  // 每列节点数
+  for(let c=0;c<depth;c++){
+    let count;
+    if(c===0)count=1;              // 起点
+    else if(c===depth-1)count=1;   // Boss
+    else count=rng.int(2,3);
+    const nodes=[];
+    for(let i=0;i<count;i++){
+      let type;
+      if(c===0)type="start";
+      else if(c===depth-1)type="boss";
+      else{
+        type=rng.weighted([["fight",0.5],["elite",0.13],["shop",0.15],["rest",0.12],["treasure",0.1]]);
+        if(c===1)type=rng.chance(0.7)?"fight":"treasure";
+      }
+      nodes.push({type,col:c,idx:i,edges:[],visited:false,reachable:c===0});
+    }
+    cols.push(nodes);
+  }
+  // 连边：每个节点连向下一列 1-2 个节点
+  for(let c=0;c<depth-1;c++){
+    for(const n of cols[c]){
+      const nextCol=cols[c+1];
+      const k=Math.min(nextCol.length,rng.int(1,2));
+      const order=rng.shuffle(nextCol.map((_,i)=>i));
+      for(let j=0;j<k;j++)n.edges.push(order[j]);
+      if(n.edges.length===0)n.edges.push(0);
+    }
+    // 确保下一列每个节点至少有入边
+    for(let i=0;i<cols[c+1].length;i++){
+      const hasIn=cols[c].some(n=>n.edges.includes(i));
+      if(!hasIn){const src=rng.pick(cols[c]);src.edges.push(i);}
+    }
+  }
+  G.map=cols;G.mapCol=0;G.mapPos=0;
+  cols[0][0].reachable=true;
+  renderMap();
+}
+function nodeIcon(t){return{start:"🚪",fight:"🃏",elite:"👹",shop:"🛒",rest:"🔥",treasure:"💎",boss:"👑"}[t]||"❓";}
+function nodeColor(t){return{start:"#7d8792",fight:"#8a5a2a",elite:"#a01e2b",shop:"#c9a24b",rest:"#7bd389",treasure:"#5a3d8a",boss:"#d63347"}[t]||"#555";}
+function renderMap(){
+  const cols=G.map,depth=cols.length;
+  const svg=$("mapsvg");
+  const colW=Math.max(120,Math.min(180,(innerWidth-80)/depth));
+  const W=colW*depth+40;
+  let maxRows=0;cols.forEach(c=>maxRows=Math.max(maxRows,c.length));
+  const rowH=110;const H=Math.max(360,rowH*Math.max(3,maxRows)+60);
+  svg.setAttribute("width",W);svg.setAttribute("height",H);svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  const px=c=>40+c*colW;
+  const py=(c,i)=>{const cnt=cols[c].length;const gap=H/(cnt+1);return gap*(i+1);};
+  let html="";
+  // edges
+  for(let c=0;c<depth-1;c++){
+    for(let i=0;i<cols[c].length;i++){
+      const n=cols[c][i];
+      for(const e of n.edges){
+        const x1=px(c),y1=py(c,i),x2=px(c+1),y2=py(c+1,e);
+        const mx=(x1+x2)/2;
+        const active=(c<G.mapCol)|| (c===G.mapCol && i===G.mapPos);
+        html+=`<path d="M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" fill="none" stroke="${active?"#c9a24b":"#2a323c"}" stroke-width="${active?3:2}" opacity="${active?0.9:0.5}"/>`;
+      }
+    }
+  }
+  // nodes
+  for(let c=0;c<depth;c++){
+    for(let i=0;i<cols[c].length;i++){
+      const n=cols[c][i];const x=px(c),y=py(c,i);
+      let cls="mnode";let avail=false;
+      const cleared=c<G.mapCol;
+      const isCurrent=c===G.mapCol&&i===G.mapPos;
+      if(c===G.mapCol+1){
+        // 可前往：来自当前节点的边
+        const cur=cols[G.mapCol][G.mapPos];
+        if(cur&&cur.edges.includes(i)){avail=true;cls+=" avail";}
+        else cls+=" locked";
+      }else if(!isCurrent && !cleared){cls+=" locked";}
+      const col=nodeColor(n.type);
+      const glow=isCurrent?`filter:drop-shadow(0 0 10px #fff)`:"";
+      html+=`<g class="${cls}" data-col="${c}" data-idx="${i}" style="${glow}">
+        <circle cx="${x}" cy="${y}" r="26" fill="#12161c" stroke="${col}" stroke-width="${isCurrent?4:2.5}"/>
+        <text x="${x}" y="${y+8}" font-size="24" text-anchor="middle">${nodeIcon(n.type)}</text>
+        ${n.type!=="start"?`<text x="${x}" y="${y+44}" font-size="11" fill="#7d8792" text-anchor="middle">${nodeLabel(n.type)}</text>`:""}
+        ${isCurrent?`<text x="${x}" y="${y-36}" font-size="11" fill="#fff" text-anchor="middle">◆你在此</text>`:""}
+      </g>`;
+    }
+  }
+  svg.innerHTML=html;
+  svg.querySelectorAll(".mnode.avail").forEach(g=>{
+    g.addEventListener("click",()=>{Audio2.sfx("click");enterNode(+g.dataset.col,+g.dataset.idx);});
+  });
+  $("mapTitle").textContent=`深渊路线图 · 第 ${G.mapCol+1}/${depth} 列 · ${DIFFS[G.diff].name} · ${MODES.find(m=>m.id===G.mode).name}`;
+}
+function nodeLabel(t){return{fight:"对决",elite:"精英",shop:"商店",rest:"营火",treasure:"宝藏",boss:"首领"}[t]||"";}
+
+function enterNode(col,idx){
+  G.mapCol=col;G.mapPos=idx;G.floor=col;updateTop();
+  // 混沌模式
+  if(G.mode==="m_chaos"&&col>0){
+    if(G.rng.chance(0.5)){const r=grantRandomRelic(0.1);if(r){toast("混沌赐予：血契「"+r.name+"」");renderRelics();}}
+    else if(G.relics.length>1){const rem=G.rng.pick(G.relics);G.relics=G.relics.filter(x=>x!==rem);toast("混沌夺走了一个血契");renderRelics();}
+  }
+  const node=G.map[col][idx];
+  switch(node.type){
+    case"fight":startDuel(pickEnemy(false));break;
+    case"elite":startDuel(pickEnemy("elite"));break;
+    case"boss":startDuel(pickEnemy("boss"));break;
+    case"shop":openShop();break;
+    case"rest":openRest();break;
+    case"treasure":openTreasure();break;
+  }
+}
+function pickEnemy(kind){
+  const rng=G.rng;let base;
+  if(kind==="boss")base=rng.pick(BOSSES);
+  else if(kind==="elite")base=rng.pick(ELITES);
+  else base=rng.pick(ENEMIES);
+  const scale=1+G.floor*0.08;
+  let hp=Math.round(base.hp*scale*DIFFS[G.diff].em);
+  if(G.mode==="m_hardcore")hp=Math.round(hp*1.25);
+  if(G.mode==="m_swift")hp=Math.round(hp*1.15);
+  return {...base,hp};
+}
+
+/* ============================================================
+   对决 (Blackjack combat)
+============================================================ */
+function startDuel(enemy){
+  G.enemy=enemy;G.enemyMaxHp=enemy.hp;G.enemyHp=enemy.hp;
+  G.deck=buildDeck(G.rng);
+  $("enemyName").textContent=enemy.n;$("enemyFace").textContent=enemy.f;
+  $("log").innerHTML="";
+  showScreen("duel");
+  renderRelics();
+  logMsg((enemy.boss?"⚔ 首领":enemy.elite?"⚠ 精英":"🃏 对决")+"："+enemy.n+" (HP "+enemy.hp+")");
+  newHand();
+}
+function drawCard(){
+  if(G.deck.length===0)G.deck=buildDeck(G.rng);
+  return G.deck.pop();
+}
+function newHand(){
+  G.phand=[];G.dhand=[];G.dealerHidden=true;G.busy=false;
+  G.phand.push(drawCard());G.dhand.push(drawCard());
+  G.phand.push(drawCard());G.dhand.push(drawCard());
+  Audio2.sfx("deal");
+  renderDuel();
+  $("btnHit").disabled=false;$("btnStand").disabled=false;
+  updateScoreboard();
+  // 天生21点
+  if(handTotal(G.phand)===21){logMsg("✨ 天生21点！");setTimeout(()=>stand(true),500);}
+}
+function renderDuel(){
+  const pc=$("playerCards"),dc=$("dealerCards");
+  pc.innerHTML="";dc.innerHTML="";
+  G.dhand.forEach((c,i)=>{
+    const hidden=(i===1&&G.dealerHidden);
+    dc.appendChild(makeCardEl(c,hidden,i));
+  });
+  G.phand.forEach((c,i)=>pc.appendChild(makeCardEl(c,false,i)));
+  const pt=handTotal(G.phand);
+  $("playerScore").textContent=pt;
+  $("playerScore").style.color=pt>21?"#ff4757":pt===21?"#7bd389":"#fff";
+  if(G.dealerHidden){$("dealerScore").textContent=G.dhand[0].val+" + ?";}
+  else{const dt=handTotal(G.dhand);$("dealerScore").textContent=dt;$("dealerScore").style.color=dt>21?"#ff4757":"#fff";}
+}
+function makeCardEl(card,faceDown,i){
+  const w=document.createElement("div");w.className="cardw";
+  const c=document.createElement("div");c.className="card";c.style.animationDelay=(i*0.08)+"s";
+  c.innerHTML=cardSVG(card,false)+`<div class="back">${cardSVG(card,true)}</div>`;
+  if(faceDown)c.classList.add("flipped");
+  w.appendChild(c);return w;
+}
+function scoreContext(isWin){
+  const total=handTotal(G.phand);
+  const ctx={chips:G.baseChips,mult:G.baseMult,hand:G.phand.slice(),total,g:G,rng:G.rng,isWin};
+  // 手型加成
+  if(total===21&&G.phand.length===2){ctx.chips+=50;ctx.mult+=4;ctx.handType="天生21";}
+  else if(total===21){ctx.chips+=25;ctx.mult+=2;ctx.handType="凑成21";}
+  else if(G.phand.length>=5&&total<=21){ctx.chips+=30;ctx.mult+=3;ctx.handType="五张查理";}
+  else ctx.handType="常规";
+  // 血契
+  for(const id of G.relics){const r=relicById(id);if(r&&r.score)try{r.score(ctx);}catch(e){}}
+  // 狂血天赋
+  if(G.talent==="t_berserk"&&G.hp<G.maxHp*0.5)ctx.mult*=1.5;
+  ctx.chips=Math.max(0,Math.round(ctx.chips));
+  ctx.mult=Math.max(0.1,Math.round(ctx.mult*10)/10);
+  ctx.dmg=Math.round(ctx.chips*ctx.mult);
+  return ctx;
+}
+function updateScoreboard(){
+  const ctx=scoreContext(true);
+  $("sbChips").textContent="筹码 "+ctx.chips;
+  $("sbMult").textContent="倍率 "+ctx.mult;
+  $("sbDmg").textContent=ctx.dmg;
+}
+function hit(){
+  if(G.busy)return;Audio2.sfx("hit");
+  G.phand.push(drawCard());renderDuel();updateScoreboard();
+  const t=handTotal(G.phand);
+  if(t>21){bust();}
+}
+function bust(){
+  G.busy=true;$("btnHit").disabled=true;$("btnStand").disabled=true;
+  Audio2.sfx("bust");logMsg("💥 爆牌！");
+  // 爆牌：受到庄家点数的伤害
+  const dmg=Math.max(6,handTotal(G.dhand.length?[G.dhand[0]]:[])+6+G.floor*2);
+  playerTakeDamage(dmg,"爆牌反噬");
+  setTimeout(()=>afterHand(false,0),700);
+}
+function stand(natural){
+  if(G.busy)return;G.busy=true;
+  $("btnHit").disabled=true;$("btnStand").disabled=true;
+  Audio2.sfx("stand");
+  G.dealerHidden=false;renderDuel();
+  // 庄家AI要牌
+  dealerPlay(()=>{
+    const pt=handTotal(G.phand),dt=handTotal(G.dhand);
+    let win=false,push=false;
+    if(pt>21)win=false;
+    else if(dt>21)win=true;
+    else if(pt>dt)win=true;
+    else if(pt===dt)push=true;
+    if(push){logMsg("🤝 平局");afterHand(null,0);return;}
+    if(win){
+      const ctx=scoreContext(true);
+      const crit=(pt===21&&G.phand.length===2);
+      Audio2.sfx(crit?"crit":"win");
+      logMsg("🩸 胜！造成 "+ctx.dmg+" 伤害"+(ctx.handType!=="常规"?" ("+ctx.handType+")":""));
+      enemyTakeDamage(ctx.dmg);
+      afterHand(true,ctx.dmg);
+    }else{
+      Audio2.sfx("lose");
+      const dmg=Math.max(5,dt+G.floor*2);
+      logMsg("☠ 败！庄家点数 "+dt);
+      playerTakeDamage(dmg,"庄家反击");
+      afterHand(false,0);
+    }
+  });
+}
+function dealerPlay(done){
+  const ai=G.enemy.ai;
+  const step=()=>{
+    let dt=handTotal(G.dhand);
+    let threshold=17;
+    if(ai==="greedy")threshold=18;
+    if(ai==="careful")threshold=handTotal(G.phand)<=21?Math.min(handTotal(G.phand)+1,20):17;
+    if(ai==="careful"&&handTotal(G.phand)>21)threshold=17;
+    if(dt<threshold&&dt<21){
+      G.dhand.push(drawCard());Audio2.sfx("deal");renderDuel();
+      setTimeout(step,450);
+    }else{renderDuel();setTimeout(done,400);}
+  };
+  setTimeout(step,450);
+}
+function playerTakeDamage(dmg,src){
+  dmg=Math.round(dmg);
+  G.hp-=dmg;updateTop();spawnDmg(dmg,".player",true);
+  Audio2.sfx("dmg");
+  if(G.hp<=0){onPlayerDead();}
+}
+function enemyTakeDamage(dmg){
+  G.enemyHp-=dmg;spawnDmg(dmg,".dealer",false);
+  flash($("stage"),"rgba(214,51,71,.12)");
+  if(G.enemyHp<=0){onEnemyDead();}
+}
+function spawnDmg(n,sel,red){
+  const zone=document.querySelector(".zone"+sel)||$("duel");
+  const el=document.createElement("div");el.className="dmgpop";el.textContent="-"+n;
+  el.style.color=red?"#ff6b7d":"#ffd85a";
+  el.style.left=(40+Math.random()*40)+"%";el.style.top="30%";
+  zone.appendChild(el);setTimeout(()=>el.remove(),1000);
+}
+function flash(el,col){el.style.transition="none";el.style.boxShadow="inset 0 0 120px "+col;setTimeout(()=>{el.style.transition=".5s";el.style.boxShadow="";},60);}
+
+function afterHand(result,dmg){
+  if(G.enemyHp<=0||G.hp<=0)return;
+  // 玻璃匕首扣血检查
+  if(G.hp<=0){onPlayerDead();return;}
+  setTimeout(()=>{if(G.enemyHp>0&&G.hp>0)newHand();},900);
+}
+function onEnemyDead(){
+  G.busy=true;$("btnHit").disabled=true;$("btnStand").disabled=true;
+  Audio2.sfx("win");logMsg("🏆 "+G.enemy.n+" 已被击溃！");
+  checkAch("first_kill");
+  if(G.enemy.boss)checkAch("boss_kill");
+  // 雪球
+  if(G.relics.includes("r_snow"))G.snow=(G.snow||0)+6;
+  // 掉落
+  let gold=Math.round((G.enemy.boss?45:G.enemy.elite?28:16+G.floor*2)*DIFFS[G.diff].gold);
+  if(G.mode==="m_hardcore")gold=Math.round(gold*1.3);
+  G.gold+=gold;updateTop();
+  const isBoss=G.enemy.boss;
+  setTimeout(()=>{
+    if(isBoss){onFloorClearBoss();}
+    else{rewardScreen(gold);}
+  },800);
+}
+function onPlayerDead(){
+  if(G.revive>0){
+    G.revive--;G.hp=Math.round(G.maxHp*0.4);updateTop();
+    toast("学徒庇佑：你复活了！");logMsg("💫 复活！");Audio2.sfx("heal");return;
+  }
+  G.busy=true;
+  Audio2.sfx("lose");
+  finishRun(false);
+}
+function onFloorClearBoss(){
+  // 通关！
+  Audio2.sfx("unlock");
+  finishRun(true);
+}
+
+/* ---------- 奖励页 ---------- */
+function rewardScreen(gold){
+  const ov=$("overlay"),p=$("panel");
+  // 生成3个血契选择
+  const owned=new Set(G.relics);
+  let pool=RELICS.filter(r=>!owned.has(r.id));
+  const genOffers=()=>{
+    const offers=[];const used=new Set();
+    for(let i=0;i<3&&pool.length>0;i++){
+      const rar=G.rng.weighted([[0,0.55],[1,0.33],[2,0.12]]);
+      let sub=pool.filter(r=>r.rar===rar&&!used.has(r.id));if(sub.length===0)sub=pool.filter(r=>!used.has(r.id));
+      if(sub.length===0)break;
+      const r=G.rng.pick(sub);used.add(r.id);offers.push(r);
+    }
+    return offers;
+  };
+  let rerolls=G.freeRerolls;
+  const render=()=>{
+    const offers=genOffers();
+    p.innerHTML=`<h2>战利品</h2><p class="hint">获得 ⚙️${gold} 齿轮 · 选择一份血契（协同越多越强）</p>
+      <div class="offer" id="offwrap"></div>
+      <div class="frow">
+        <button class="btn" id="rerollBtn" ${rerolls<=0?"disabled":""}>🎲 刷新 (剩余 ${rerolls})</button>
+        <button class="btn g" id="skipBtn">跳过 (+8⚙️)</button>
+      </div>`;
+    const ow=$("offwrap");
+    offers.forEach(r=>{
+      const d=document.createElement("div");
+      d.className="offcard"+(r.rar===2?" leg":r.rar===1?" rare":"");
+      d.innerHTML=`<div class="rar">${RAR_NAME[r.rar]}</div><div class="ico">${r.ico}</div><div class="nm">${r.name}</div><div class="ds">${r.desc}</div>`;
+      d.addEventListener("click",()=>{Audio2.sfx("coin");G.relics.push(r.id);checkAch("relic5");if(G.relics.length>=8)checkAch("relic8");closeOverlay();renderRelics();gotoMapNext();});
+      ow.appendChild(d);
+    });
+    $("rerollBtn").onclick=()=>{if(rerolls>0){rerolls--;Audio2.sfx("click");render();}};
+    $("skipBtn").onclick=()=>{G.gold+=8;updateTop();Audio2.sfx("coin");closeOverlay();gotoMapNext();};
+  };
+  render();
+  ov.classList.add("on");
+}
+function gotoMapNext(){
+  updateTop();
+  // 利息结算（若买了高利贷）
+  showScreen("map");
+  if(G.talent==="t_hoarder"){G.gold+=10;}
+  if(G.interestCap>0){const gain=Math.min(G.interestCap*5,Math.floor(G.gold*0.05));if(gain>0){G.gold+=gain;toast("利息 +"+gain+"⚙️");}}
+  updateTop();renderMap();
+  if(G.mapCol>Meta.data.bestFloor){Meta.data.bestFloor=G.mapCol;Meta.save();}
+}
+
+/* ---------- 商店 ---------- */
+function openShop(){
+  const ov=$("overlay"),p=$("panel");
+  const priceMul=(G.diff===3?1.3:1)*(G.talent==="t_ascetic"?1.3:1);
+  const owned=new Set(G.relics);
+  let pool=RELICS.filter(r=>!owned.has(r.id));
+  let rerolls=G.freeRerolls;
+  const genStock=()=>{
+    const stock=[];const used=new Set();
+    for(let i=0;i<3&&pool.length>0;i++){
+      const rar=G.rng.weighted([[0,0.5],[1,0.35],[2,0.15]]);
+      let sub=pool.filter(r=>r.rar===rar&&!used.has(r.id));if(sub.length===0)sub=pool.filter(r=>!used.has(r.id));
+      if(sub.length===0)break;const r=G.rng.pick(sub);used.add(r.id);
+      const base=[22,40,70][r.rar];
+      stock.push({r,cost:Math.round(base*priceMul)});
+    }
+    return stock;
+  };
+  let bought=new Set();
+  let stock=genStock();
+  const render=()=>{
+    p.innerHTML=`<h2>🛒 锈金商栈</h2><p class="hint">齿轮 ⚙️${G.gold} · 购买血契或服务</p>
+      <div class="offer" id="offwrap"></div>
+      <div class="frow" style="margin-top:14px">
+        <button class="btn" id="healBuy">🩹 缝合伤口 +20HP (⚙️${Math.round(18*priceMul)})</button>
+        <button class="btn" id="maxBuy">❤️ 器官移植 +8最大HP (⚙️${Math.round(30*priceMul)})</button>
+        <button class="btn" id="rerollBtn" ${rerolls<=0?"disabled":""}>🎲 刷新血契 (${rerolls})</button>
+        <button class="btn g" id="leaveBtn">离开商栈 →</button>
+      </div>`;
+    const ow=$("offwrap");
+    stock.forEach((s,idx)=>{
+      const r=s.r;const canAfford=G.gold>=s.cost&&!bought.has(idx);
+      const d=document.createElement("div");
+      d.className="offcard"+(r.rar===2?" leg":r.rar===1?" rare":"")+(canAfford?"":" dis");
+      d.innerHTML=`<div class="rar">${RAR_NAME[r.rar]}</div><div class="ico">${r.ico}</div><div class="nm">${r.name}</div><div class="ds">${r.desc}</div><div class="cost">⚙️ ${s.cost}${bought.has(idx)?" ✔已购":""}</div>`;
+      if(canAfford)d.addEventListener("click",()=>{G.gold-=s.cost;G.relics.push(r.id);bought.add(idx);Audio2.sfx("coin");updateTop();renderRelics();if(G.relics.length>=8)checkAch("relic8");render();});
+      ow.appendChild(d);
+    });
+    const hc=Math.round(18*priceMul),mc=Math.round(30*priceMul);
+    $("healBuy").disabled=G.gold<hc||G.hp>=G.maxHp;
+    $("healBuy").onclick=()=>{G.gold-=hc;G.heal(20);Audio2.sfx("heal");updateTop();render();};
+    $("maxBuy").disabled=G.gold<mc;
+    $("maxBuy").onclick=()=>{G.gold-=mc;G.maxHp+=8;G.heal(8);Audio2.sfx("heal");updateTop();render();};
+    $("rerollBtn").onclick=()=>{if(rerolls>0){rerolls--;bought=new Set();stock=genStock();Audio2.sfx("click");render();}};
+    $("leaveBtn").onclick=()=>{closeOverlay();gotoMapNext();};
+  };
+  render();ov.classList.add("on");
+}
+/* ---------- 营火 ---------- */
+function openRest(){
+  const ov=$("overlay"),p=$("panel");
+  p.innerHTML=`<h2>🔥 锈炉营火</h2><p class="hint">短暂喘息，选择其一</p>
+    <div class="offer">
+      <div class="offcard" id="restHeal"><div class="ico">🩹</div><div class="nm">休整</div><div class="ds">恢复最大生命的35%。</div></div>
+      <div class="offcard rare" id="restForge"><div class="ico">🔨</div><div class="nm">锻造</div><div class="ds">将一个随机血契的效果强化：本局基础筹码+4、基础倍率+0.5。</div></div>
+      <div class="offcard leg" id="restRitual"><div class="ico">🩸</div><div class="nm">献祭仪式</div><div class="ds">失去15%当前生命，获得一个稀有+血契。</div></div>
+    </div>`;
+  $("restHeal").onclick=()=>{G.heal(Math.round(G.maxHp*0.35));Audio2.sfx("heal");closeOverlay();gotoMapNext();};
+  $("restForge").onclick=()=>{G.baseChips+=4;G.baseMult+=0.5;Audio2.sfx("unlock");toast("永久强化：基础筹码/倍率提升");closeOverlay();gotoMapNext();};
+  $("restRitual").onclick=()=>{G.hp=Math.max(1,Math.round(G.hp*0.85));const owned=new Set(G.relics);const pool=RELICS.filter(r=>!owned.has(r.id)&&r.rar>=1);if(pool.length){const r=G.rng.pick(pool);G.relics.push(r.id);toast("献祭获得：「"+r.name+"」");}Audio2.sfx("crit");renderRelics();closeOverlay();gotoMapNext();};
+  ov.classList.add("on");
+}
+/* ---------- 宝藏 ---------- */
+function openTreasure(){
+  const ov=$("overlay"),p=$("panel");
+  const gold=G.rng.int(20,40)+G.floor*3;
+  const owned=new Set(G.relics);const pool=RELICS.filter(r=>!owned.has(r.id));
+  const r=pool.length?G.rng.pick(pool):null;
+  p.innerHTML=`<h2>💎 尘封宝库</h2><p class="hint">选择开启一件</p>
+    <div class="offer">
+      <div class="offcard g" id="tGold"><div class="ico">⚙️</div><div class="nm">齿轮堆</div><div class="ds">获得 ${gold} 齿轮。</div></div>
+      ${r?`<div class="offcard ${r.rar===2?"leg":r.rar===1?"rare":""}" id="tRelic"><div class="rar">${RAR_NAME[r.rar]}</div><div class="ico">${r.ico}</div><div class="nm">${r.name}</div><div class="ds">${r.desc}</div></div>`:""}
+      <div class="offcard rare" id="tMix"><div class="ico">🎁</div><div class="nm">神秘盒</div><div class="ds">${Math.round(gold/2)}齿轮 + 恢复20%生命。</div></div>
+    </div>`;
+  $("tGold").onclick=()=>{G.gold+=gold;Audio2.sfx("coin");updateTop();closeOverlay();gotoMapNext();};
+  if(r)$("tRelic").onclick=()=>{G.relics.push(r.id);Audio2.sfx("unlock");renderRelics();if(G.relics.length>=8)checkAch("relic8");closeOverlay();gotoMapNext();};
+  $("tMix").onclick=()=>{G.gold+=Math.round(gold/2);G.heal(Math.round(G.maxHp*0.2));Audio2.sfx("coin");updateTop();closeOverlay();gotoMapNext();};
+  ov.classList.add("on");
+}
+
+/* ---------- 血契托盘 ---------- */
+function renderRelics(){
+  const tray=$("relictray");tray.innerHTML="";
+  if(G.relics.length===0){tray.innerHTML='<span style="color:var(--dim);font-size:12px;padding-left:6px">尚无血契</span>';return;}
+  for(const id of G.relics){
+    const r=relicById(id);if(!r)continue;
+    const d=document.createElement("div");
+    d.className="relic"+(r.rar===2?" leg":r.rar===1?" rare":"");
+    d.textContent=r.ico;
+    bindTip(d,r.name,RAR_NAME[r.rar],r.desc);
+    tray.appendChild(d);
+  }
+}
+
+/* ---------- 结束一局 ---------- */
+function finishRun(win){
+  const ov=$("overlay"),p=$("panel");
+  // 血晶奖励
+  let shards=1+G.mapCol+(win?5:0)+G.diff*2;
+  if(win)shards+=G.mode==="m_hardcore"?3:0;
+  Meta.data.shards+=shards;
+  if(win){Meta.data.wins++;checkAch("win");if(G.diff>=3)checkAch("sacrifice");if(G.relics.length===1)checkAch("minimalist");if(G.diff>Meta.data.highestDiff)Meta.data.highestDiff=G.diff;}
+  if(G.mapCol>Meta.data.bestFloor)Meta.data.bestFloor=G.mapCol;
+  // 解锁检查
+  const newlyUnlocked=checkUnlocks();
+  Meta.save();
+  p.innerHTML=`<h2>${win?"🏆 深渊征服":"☠ 血染于此"}</h2>
+    <p class="hint">种子 ${G.seed} · ${DIFFS[G.diff].name} · ${MODES.find(m=>m.id===G.mode).name}</p>
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="kv"><span>到达层数</span><b>${G.mapCol+1}</b></div>
+      <div class="kv"><span>血契数量</span><b>${G.relics.length}</b></div>
+      <div class="kv"><span>剩余齿轮</span><b>${G.gold}</b></div>
+      <div class="kv"><span>获得血晶</span><b>💎+${shards}</b></div>
+    </div>
+    ${newlyUnlocked.length?`<div style="text-align:center;color:var(--acid);margin:10px 0">🔓 新解锁：${newlyUnlocked.join(" · ")}</div>`:""}
+    <div class="offer" style="margin-top:6px">${G.relics.map(id=>{const r=relicById(id);return r?`<div class="relic ${r.rar===2?"leg":r.rar===1?"rare":""}" style="width:34px;height:34px;font-size:16px">${r.ico}</div>`:"";}).join("")}</div>
+    <div class="frow" style="margin-top:16px">
+      <button class="btn p" id="againBtn">🔁 再来一局</button>
+      <button class="btn" id="titleBtn">🏠 返回标题</button>
+    </div>`;
+  $("againBtn").onclick=()=>{closeOverlay();startRun();};
+  $("titleBtn").onclick=()=>{closeOverlay();showScreen("title");refreshMetaHint();};
+  ov.classList.add("on");
+  Audio2.sfx(win?"unlock":"lose");
+}
+
+/* ============================================================
+   成就 & 解锁
+============================================================ */
+const ACHS=[
+  {id:"first_kill",ico:"🃏",name:"初尝血腥",desc:"击败第一个庄家。"},
+  {id:"win",ico:"🏆",name:"深渊征服者",desc:"通关一次深渊。"},
+  {id:"boss_kill",ico:"👑",name:"弑君",desc:"击败一个首领。"},
+  {id:"relic5",ico:"📿",name:"契约收集者",desc:"单局持有5个血契。"},
+  {id:"relic8",ico:"🕸️",name:"血契狂徒",desc:"单局持有8个血契。"},
+  {id:"bigdmg",ico:"💢",name:"一击必杀",desc:"单回合造成≥150伤害。"},
+  {id:"sacrifice",ico:"🩸",name:"献祭者",desc:"以「献祭」难度通关。"},
+  {id:"minimalist",ico:"🎯",name:"极简主义",desc:"仅持1个血契通关。"},
+  {id:"seedmaster",ico:"🌀",name:"命运编织者",desc:"使用自定义种子游玩。"},
+];
+function checkAch(id){
+  if(!Meta.data.ach.includes(id)){
+    Meta.data.ach.push(id);Meta.save();
+    const a=ACHS.find(x=>x.id===id);
+    if(a){toast("🏆 成就解锁："+a.name);Audio2.sfx("unlock");}
+  }
+}
+function checkUnlocks(){
+  const out=[];const m=Meta.data;
+  for(const t of TALENTS){if(!t.always&&t.cond&&t.cond(m)&&!m.talents.includes(t.id)){m.talents.push(t.id);out.push("天赋·"+t.name);}}
+  for(const mo of MODES){if(!mo.always&&mo.cond&&mo.cond(m)&&!m.modes.includes(mo.id)){m.modes.push(mo.id);out.push("模式·"+mo.name);}}
+  if(out.length)Audio2.sfx("unlock");
+  return out;
+}
+
+/* ============================================================
+   菜单面板（难度/天赋/模式、养成、成就、帮助）
+============================================================ */
+function closeOverlay(){$("overlay").classList.remove("on");}
+$("overlay").addEventListener("click",e=>{if(e.target.id==="overlay"){/*不轻易关闭战斗流程弹窗*/}});
+
+function openDiffPanel(){
+  const ov=$("overlay"),p=$("panel");
+  const m=Meta.data;
+  const availTalents=TALENTS.filter(t=>t.always||m.talents.includes(t.id)||(t.cond&&t.cond(m)));
+  const render=()=>{
+    p.innerHTML=`<h2>难度 · 天赋 · 模式</h2>
+      <p class="hint">配置你的深渊之旅</p>
+      <div style="color:var(--brass);letter-spacing:1px;margin:8px 0 4px">难度</div>
+      <div class="frow" id="diffRow"></div>
+      <div style="color:var(--brass);letter-spacing:1px;margin:12px 0 4px">开局天赋</div>
+      <div class="frow" id="talentRow"></div>
+      <div style="color:var(--brass);letter-spacing:1px;margin:12px 0 4px">游戏模式</div>
+      <div class="frow" id="modeRow"></div>
+      <div class="frow" style="margin-top:16px"><button class="btn p" id="confirmBtn">✔ 确认</button></div>`;
+    const dr=$("diffRow");
+    DIFFS.forEach(d=>{
+      const el=document.createElement("div");el.className="diffopt"+(SEL_DIFF===d.id?" sel":"");
+      el.innerHTML=`<div class="dn">${d.name}</div><div class="dd">${d.dd}</div>`;
+      el.onclick=()=>{SEL_DIFF=d.id;Audio2.sfx("click");render();};dr.appendChild(el);
+    });
+    const tr=$("talentRow");
+    TALENTS.forEach(t=>{
+      const unlocked=t.always||m.talents.includes(t.id)||(t.cond&&t.cond(m));
+      const el=document.createElement("div");el.className="diffopt"+(SEL_TALENT===t.id?" sel":"");
+      if(!unlocked)el.style.opacity=".4";
+      el.innerHTML=`<div class="dn">${t.ico} ${t.name}</div><div class="dd">${t.desc}${unlocked?"":"<br>🔒 "+(t.unlock||"未解锁")}</div>`;
+      if(unlocked)el.onclick=()=>{SEL_TALENT=t.id;Audio2.sfx("click");render();};
+      tr.appendChild(el);
+    });
+    const mr=$("modeRow");
+    MODES.forEach(mo=>{
+      const unlocked=mo.always||m.modes.includes(mo.id)||(mo.cond&&mo.cond(m));
+      const el=document.createElement("div");el.className="diffopt"+(SEL_MODE===mo.id?" sel":"");
+      if(!unlocked)el.style.opacity=".4";
+      el.innerHTML=`<div class="dn">${mo.name}</div><div class="dd">${mo.desc}${unlocked?"":"<br>🔒 未解锁"}</div>`;
+      if(unlocked)el.onclick=()=>{SEL_MODE=mo.id;Audio2.sfx("click");render();};
+      mr.appendChild(el);
+    });
+    $("confirmBtn").onclick=()=>{closeOverlay();refreshMetaHint();};
+  };
+  render();ov.classList.add("on");
+}
+
+function openMetaPanel(){
+  const ov=$("overlay"),p=$("panel");
+  const render=()=>{
+    p.innerHTML=`<h2>🔩 永久养成</h2><p class="hint">血晶 💎 ${Meta.data.shards} · 局外养成，永久生效</p>
+      <div id="perkList"></div>
+      <div class="frow" style="margin-top:14px">
+        <button class="btn" id="closeMeta">← 返回</button>
+        <button class="btn small" id="resetMeta" style="opacity:.6">重置存档</button>
+      </div>`;
+    const pl=$("perkList");
+    PERKS.forEach(pk=>{
+      const lv=Meta.data.perks[pk.id]||0;
+      const maxed=lv>=pk.max;
+      const cost=maxed?0:pk.cost(lv+1);
+      const can=!maxed&&Meta.data.shards>=cost;
+      const row=document.createElement("div");row.className="ach";
+      row.innerHTML=`<div class="aic">${pk.ico}</div>
+        <div style="flex:1"><div class="at">${pk.name} <span style="color:var(--dim);font-size:12px">Lv ${lv}/${pk.max}</span></div><div class="ad">${pk.desc}</div></div>
+        <button class="btn small ${can?"g":""}" ${(!can)?"disabled":""}>${maxed?"MAX":"💎 "+cost}</button>`;
+      const btn=row.querySelector("button");
+      if(can)btn.onclick=()=>{Meta.data.shards-=cost;Meta.data.perks[pk.id]=lv+1;Meta.save();Audio2.sfx("coin");render();};
+      pl.appendChild(row);
+    });
+    $("closeMeta").onclick=()=>{closeOverlay();refreshMetaHint();};
+    $("resetMeta").onclick=()=>{if(confirm("确定重置全部存档？血晶、解锁、成就都将清空。")){Meta.reset();Audio2.sfx("bust");render();refreshMetaHint();}};
+  };
+  render();ov.classList.add("on");
+}
+
+function openAchPanel(){
+  const ov=$("overlay"),p=$("panel");
+  const got=Meta.data.ach.length;
+  p.innerHTML=`<h2>🏆 成就 (${got}/${ACHS.length})</h2><p class="hint">局外统计 · 总局数 ${Meta.data.runs} · 通关 ${Meta.data.wins} · 最深层 ${Meta.data.bestFloor+1}</p>
+    <div id="achList"></div>
+    <div class="frow" style="margin-top:14px"><button class="btn" id="closeAch">← 返回</button></div>`;
+  const al=$("achList");
+  ACHS.forEach(a=>{
+    const unlocked=Meta.data.ach.includes(a.id);
+    const row=document.createElement("div");row.className="ach"+(unlocked?"":" lock");
+    row.innerHTML=`<div class="aic">${unlocked?a.ico:"🔒"}</div><div><div class="at">${a.name}</div><div class="ad">${a.desc}</div></div>`;
+    al.appendChild(row);
+  });
+  $("closeAch").onclick=()=>closeOverlay();
+  ov.classList.add("on");
+}
+
+function openHelp(){
+  const ov=$("overlay"),p=$("panel");
+  p.innerHTML=`<h2>📖 玩法说明</h2>
+    <div style="line-height:1.7;font-size:14px;color:var(--ink);max-width:620px">
+    <b style="color:var(--brass)">核心</b>：这是融合《小丑牌》计分与 21 点战斗的 Roguelite。与庄家进行 21 点对决——<b>点数不超21且大于庄家即获胜</b>，胜利将造成伤害榨干庄家生命。<br><br>
+    <b style="color:var(--brass)">计分</b>：每次获胜的伤害 = <span class="chip">筹码</span> × <span class="mult">倍率</span>。天生21点/凑成21/五张查理等牌型提供额外筹码与倍率，<b>血契</b>则提供强力协同。<br><br>
+    <b style="color:var(--brass)">血契协同</b>：花色、人头牌、对子、生命值、齿轮数量……不同血契围绕不同主题堆叠，追求爆炸性构筑（如♦流、A流、低生命狂血流）。<br><br>
+    <b style="color:var(--brass)">路线图</b>：每层在对决🃏/精英👹/商店🛒/营火🔥/宝藏💎/首领👑间选择路线，规划资源。<br><br>
+    <b style="color:var(--brass)">种子</b>：输入相同种子+难度+模式将得到完全一致的牌序、地图与掉落，便于挑战与分享。<br><br>
+    <b style="color:var(--brass)">养成</b>：局内获得血契（局内升级），通关获得血晶用于永久养成（局外养成），并解锁天赋、模式与成就。
+    </div>
+    <div class="frow" style="margin-top:16px"><button class="btn p" id="closeHelp">明白了</button></div>`;
+  $("closeHelp").onclick=()=>closeOverlay();
+  ov.classList.add("on");
+}
+
+function refreshMetaHint(){
+  const m=Meta.data;
+  $("metaHint").textContent=`💎血晶 ${m.shards} · 通关 ${m.wins} · 成就 ${m.ach.length}/${ACHS.length} · 当前配置：${DIFFS[SEL_DIFF].name}/${TALENTS.find(t=>t.id===SEL_TALENT).name}/${MODES.find(x=>x.id===SEL_MODE).name}`;
+}
+
+/* ============================================================
+   伤害成就监听（包装 enemyTakeDamage）
+============================================================ */
+const _enemyTake=enemyTakeDamage;
+enemyTakeDamage=function(dmg){if(dmg>=150)checkAch("bigdmg");_enemyTake(dmg);};
+
+/* ============================================================
+   事件绑定
+============================================================ */
+$("btnPlay").onclick=()=>{Audio2.init();Audio2.resume();if($("seedInput").value.trim())checkAch("seedmaster");startRun();};
+$("btnRandSeed").onclick=()=>{$("seedInput").value=randomSeed();Audio2.init();Audio2.sfx("click");};
+$("btnDiff").onclick=()=>{Audio2.init();openDiffPanel();};
+$("btnMeta").onclick=()=>{Audio2.init();openMetaPanel();};
+$("btnAch").onclick=()=>{Audio2.init();openAchPanel();};
+$("btnHelp2").onclick=()=>{Audio2.init();openHelp();};
+$("helpBtn").onclick=openHelp;
+$("menuBtn").onclick=()=>{if(confirm("返回标题？当前进度将丢失。")){showScreen("title");refreshMetaHint();}};
+$("muteBtn").onclick=()=>{Audio2.init();const m=Audio2.toggleMute();$("muteBtn").textContent=m?"🔇 静音":"🔊 声音";};
+$("btnHit").onclick=hit;
+$("btnStand").onclick=()=>stand(false);
+window.addEventListener("resize",()=>{if($("map").classList.contains("on"))renderMap();});
+window.addEventListener("keydown",e=>{
+  if($("duel").classList.contains("on")&&!G.busy){
+    if(e.key==="h"||e.key==="H"||e.key===" ")hit();
+    if(e.key==="s"||e.key==="S"||e.key==="Enter")stand(false);
+  }
+});
+// 首次交互启动音频
+document.body.addEventListener("pointerdown",()=>{Audio2.init();Audio2.resume();Audio2.startMusic();},{once:true});
+
+/* ---------- 启动 ---------- */
+Meta.load();
+// 应用已解锁的默认选择安全性
+if(!TALENTS.find(t=>t.id===SEL_TALENT))SEL_TALENT="t_none";
+$("seedInput").value=randomSeed();
+updateTop();refreshMetaHint();
+</script>
+</body>
+</html>
