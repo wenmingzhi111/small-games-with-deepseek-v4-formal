@@ -1,0 +1,1955 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>遗迹回响 · Echoes of the Ruined Sanctuary</title>
+
+<!-- ============================================================
+  Three.js 通过 CDN 的 ES Module 导入映射加载（版本锁定 r0.185.1）
+  这样单文件保持整洁可读，且是单文件 Three.js 项目的标准做法。
+============================================================ -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+  /* ===================== 全局与字体 ===================== */
+  :root {
+    --hp: #ff4d5e;
+    --hp-glow: #ff8a94;
+    --mp: #4db6ff;
+    --mp-glow: #8fd4ff;
+    --xp: #ffd24d;
+    --arcane: #b98cff;
+    --arcane-glow: #d9c2ff;
+    --panel-bg: rgba(14, 10, 28, 0.82);
+    --panel-border: rgba(150, 110, 255, 0.35);
+    --text: #e8e2ff;
+    --text-dim: #9a90c4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #05030d;
+    color: var(--text);
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    user-select: none;
+    cursor: default;
+  }
+
+  canvas { display: block; }
+
+  /* ===================== 通用面板样式 ===================== */
+  .panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 40px rgba(80, 40, 160, 0.35),
+                inset 0 0 24px rgba(120, 80, 200, 0.08);
+  }
+
+  /* ===================== HUD 容器 ===================== */
+  #hud {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #hud.hidden { display: none; }
+
+  /* ---- 左上角：等级 + HP/MP ---- */
+  #vitals {
+    position: absolute; top: 18px; left: 18px;
+    width: 320px;
+    padding: 14px 16px;
+    pointer-events: none;
+  }
+  .level-row {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 10px;
+  }
+  #level-badge {
+    display: flex; align-items: center; justify-content: center;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #7b53d6, #2a1a52);
+    border: 2px solid var(--arcane-glow);
+    box-shadow: 0 0 18px rgba(185, 140, 255, 0.6);
+    font-size: 22px; font-weight: 700;
+    color: #fff; text-shadow: 0 0 8px var(--arcane-glow);
+  }
+  .level-meta { flex: 1; }
+  .level-meta .name { font-size: 14px; letter-spacing: 1px; color: var(--arcane-glow); }
+  .level-meta .sub { font-size: 11px; color: var(--text-dim); }
+
+  .bar {
+    position: relative;
+    height: 20px;
+    border-radius: 10px;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.12);
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .bar .fill {
+    position: absolute; inset: 0;
+    width: 100%;
+    transform-origin: left;
+    border-radius: 10px;
+    transition: width 0.25s ease;
+  }
+  .bar .label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+    letter-spacing: 0.5px;
+  }
+  #hp-fill { background: linear-gradient(90deg, #8a1020, var(--hp) 60%, var(--hp-glow)); box-shadow: 0 0 12px var(--hp); }
+  #mp-fill { background: linear-gradient(90deg, #1a4a8a, var(--mp) 60%, var(--mp-glow)); box-shadow: 0 0 12px var(--mp); }
+
+  /* ---- 右上角：波次 + 状态 ---- */
+  #wave-info {
+    position: absolute; top: 18px; right: 18px;
+    padding: 12px 18px;
+    text-align: right;
+    min-width: 180px;
+  }
+  #wave-info .wave-num { font-size: 30px; font-weight: 800; color: var(--arcane-glow); text-shadow: 0 0 14px var(--arcane); }
+  #wave-info .wave-label { font-size: 11px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
+  #wave-info .enemy-count { font-size: 13px; margin-top: 6px; color: var(--hp-glow); }
+  #wave-info .timer { font-size: 12px; margin-top: 2px; color: var(--text-dim); }
+
+  /* ---- 顶部中央：属性快览 ---- */
+  #stats-quick {
+    position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 18px;
+    padding: 8px 20px;
+    font-size: 12px;
+  }
+  #stats-quick .stat { text-align: center; }
+  #stats-quick .stat .v { font-size: 15px; font-weight: 700; color: var(--arcane-glow); }
+  #stats-quick .stat .k { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ---- 底部中央：XP 条 + 热键栏 ---- */
+  #bottom-center {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    width: 560px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  #xp-bar {
+    width: 100%;
+    height: 14px;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 7px;
+    overflow: hidden;
+    position: relative;
+  }
+  #xp-fill {
+    position: absolute; inset: 0; width: 0%;
+    background: linear-gradient(90deg, #b58600, var(--xp) 70%, #fff2b8);
+    box-shadow: 0 0 10px var(--xp);
+    border-radius: 7px;
+    transition: width 0.3s ease;
+  }
+  #xp-text {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px #000;
+  }
+
+  #hotbar { display: flex; gap: 10px; }
+  .slot {
+    position: relative;
+    width: 62px; height: 62px;
+    border-radius: 10px;
+    background: rgba(20,14,40,0.85);
+    border: 2px solid rgba(150,110,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    transition: transform 0.08s, border-color 0.2s;
+    pointer-events: auto; cursor: pointer;
+  }
+  .slot:hover { transform: translateY(-3px); border-color: var(--arcane-glow); }
+  .slot .key {
+    position: absolute; top: 2px; left: 5px;
+    font-size: 11px; color: var(--text-dim); font-weight: 700;
+  }
+  .slot .cd-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.7);
+    border-radius: 8px;
+    transform-origin: bottom;
+    transform: scaleY(0);
+    pointer-events: none;
+  }
+  .slot .cost {
+    position: absolute; bottom: 2px; right: 5px;
+    font-size: 10px; color: var(--mp-glow); font-weight: 700;
+  }
+  .slot.no-mana { border-color: rgba(255,80,80,0.5); }
+
+  /* ---- 左下角：亮度滑块 ---- */
+  #brightness-ctl {
+    position: absolute; bottom: 18px; left: 18px;
+    padding: 12px 16px;
+    pointer-events: auto;
+    width: 220px;
+  }
+  #brightness-ctl label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; display: block; margin-bottom: 8px; }
+  #brightness-ctl .row { display: flex; align-items: center; gap: 10px; }
+  #brightness-ctl input[type=range] {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    height: 6px; border-radius: 3px;
+    background: linear-gradient(90deg, #2a1a52, var(--arcane-glow));
+    outline: none; cursor: pointer;
+  }
+  #brightness-ctl input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 10px var(--arcane-glow);
+    cursor: pointer;
+  }
+  #brightness-ctl input[type=range]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%; border: none;
+    background: #fff; box-shadow: 0 0 10px var(--arcane-glow); cursor: pointer;
+  }
+  #brightness-val { font-size: 12px; color: var(--arcane-glow); width: 34px; text-align: right; }
+
+  /* ---- 准星 ---- */
+  #crosshair {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 22px; height: 22px; pointer-events: none;
+    opacity: 0.7;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ""; position: absolute; background: var(--arcane-glow);
+    box-shadow: 0 0 6px var(--arcane);
+  }
+  #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+
+  /* ===================== 浮动战斗文字 ===================== */
+  #floating-layer { position: fixed; inset: 0; pointer-events: none; z-index: 15; overflow: hidden; }
+  .float-text {
+    position: absolute;
+    font-weight: 800;
+    font-size: 20px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+    animation: floatUp 1s ease-out forwards;
+    white-space: nowrap;
+  }
+  .float-text.crit { font-size: 30px; }
+  @keyframes floatUp {
+    0%   { transform: translateY(0) scale(0.6); opacity: 0; }
+    15%  { transform: translateY(-8px) scale(1.15); opacity: 1; }
+    30%  { transform: translateY(-16px) scale(1); }
+    100% { transform: translateY(-70px) scale(0.9); opacity: 0; }
+  }
+
+  /* ===================== 库存面板（按 I） ===================== */
+  #inventory {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 640px; max-height: 78vh;
+    padding: 24px;
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    pointer-events: auto;
+  }
+  #inventory.open { display: flex; }
+  #inventory h2 { font-size: 20px; color: var(--arcane-glow); margin-bottom: 4px; letter-spacing: 2px; }
+  #inventory .hint { font-size: 11px; color: var(--text-dim); margin-bottom: 18px; }
+  #inventory .section-title { font-size: 13px; color: var(--arcane-glow); text-transform: uppercase; letter-spacing: 1.5px; margin: 16px 0 10px; border-bottom: 1px solid var(--panel-border); padding-bottom: 6px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat-cell { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; text-align: center; }
+  .stat-cell .k { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+  .stat-cell .v { font-size: 18px; font-weight: 700; color: var(--arcane-glow); margin-top: 3px; }
+
+  .item-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .inv-slot {
+    aspect-ratio: 1;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(150,110,255,0.25);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    position: relative; cursor: help;
+    transition: transform 0.1s, border-color 0.2s;
+  }
+  .inv-slot.filled:hover { transform: scale(1.08); border-color: var(--arcane-glow); box-shadow: 0 0 14px rgba(185,140,255,0.5); }
+  .inv-slot .stack {
+    position: absolute; bottom: 2px; right: 4px;
+    font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000;
+  }
+
+  /* 工具提示 */
+  #tooltip {
+    position: fixed; z-index: 60;
+    max-width: 240px; padding: 10px 12px;
+    background: rgba(8,5,20,0.96);
+    border: 1px solid var(--arcane); border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    font-size: 12px; pointer-events: none; display: none;
+  }
+  #tooltip .t-name { font-size: 13px; font-weight: 700; color: var(--arcane-glow); margin-bottom: 4px; }
+  #tooltip .t-desc { color: var(--text); line-height: 1.5; }
+  #tooltip .t-count { color: var(--xp); margin-top: 6px; font-size: 11px; }
+
+  /* ===================== 屏幕遮罩（菜单 / 结束） ===================== */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, rgba(40,20,80,0.6), rgba(3,2,10,0.94));
+    backdrop-filter: blur(4px);
+  }
+  .overlay.hidden { display: none; }
+
+  .menu-box { width: 480px; padding: 44px 40px; text-align: center; pointer-events: auto; }
+  .menu-box .title {
+    font-size: 38px; font-weight: 800; letter-spacing: 3px;
+    background: linear-gradient(90deg, var(--arcane-glow), var(--mp-glow), var(--arcane-glow));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 40px rgba(185,140,255,0.4);
+    margin-bottom: 6px;
+  }
+  .menu-box .subtitle { font-size: 13px; color: var(--text-dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 34px; }
+
+  .btn {
+    display: block; width: 100%;
+    padding: 14px; margin: 12px 0;
+    font-size: 16px; font-weight: 600; letter-spacing: 1px;
+    color: var(--text);
+    background: linear-gradient(135deg, rgba(90,55,170,0.6), rgba(40,25,80,0.6));
+    border: 1px solid var(--arcane); border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn:hover:not(:disabled) { background: linear-gradient(135deg, rgba(130,85,220,0.85), rgba(70,40,130,0.85)); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(120,70,220,0.4); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn.danger { border-color: var(--hp); }
+  .btn.danger:hover { background: linear-gradient(135deg, rgba(200,50,70,0.85), rgba(100,20,40,0.85)); box-shadow: 0 8px 24px rgba(220,60,80,0.4); }
+
+  .save-preview {
+    margin-top: 8px; margin-bottom: 20px;
+    font-size: 12px; color: var(--text-dim); line-height: 1.7;
+    padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px;
+  }
+  .save-preview.none { color: #64597f; font-style: italic; }
+  .save-preview b { color: var(--arcane-glow); font-weight: 700; }
+
+  /* 结束画面统计 */
+  .gameover-stats { margin: 20px 0 26px; }
+  .gameover-stats .row {
+    display: flex; justify-content: space-between;
+    padding: 8px 4px; border-bottom: 1px solid rgba(150,110,255,0.15);
+    font-size: 14px;
+  }
+  .gameover-stats .row .k { color: var(--text-dim); }
+  .gameover-stats .row .v { color: var(--arcane-glow); font-weight: 700; }
+  #gameover .title { color: var(--hp); background: none; -webkit-text-fill-color: var(--hp); text-shadow: 0 0 30px rgba(255,77,94,0.6); }
+
+  /* ---- 顶部 toast / 提示 ---- */
+  #toast {
+    position: fixed; top: 90px; left: 50%; transform: translateX(-50%);
+    padding: 12px 26px; z-index: 40;
+    font-size: 15px; font-weight: 600; color: var(--arcane-glow);
+    opacity: 0; transition: opacity 0.4s, transform 0.4s;
+    pointer-events: none;
+    text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(6px); }
+
+  /* 波次开场大字 */
+  #wave-banner {
+    position: fixed; top: 40%; left: 50%; transform: translate(-50%,-50%);
+    z-index: 40; text-align: center; pointer-events: none;
+    opacity: 0;
+  }
+  #wave-banner.show { animation: bannerPop 2.4s ease-out forwards; }
+  #wave-banner .big { font-size: 52px; font-weight: 800; color: var(--arcane-glow); text-shadow: 0 0 30px var(--arcane); letter-spacing: 4px; }
+  #wave-banner .small { font-size: 16px; color: var(--text-dim); letter-spacing: 3px; text-transform: uppercase; }
+  @keyframes bannerPop {
+    0% { opacity: 0; transform: translate(-50%,-50%) scale(0.7); }
+    15% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%,-50%) scale(1.05); }
+  }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    background: #05030d; color: var(--arcane-glow);
+    font-size: 18px; letter-spacing: 3px;
+  }
+  #loading .spinner {
+    width: 44px; height: 44px; margin-bottom: 20px;
+    border: 3px solid rgba(185,140,255,0.2);
+    border-top-color: var(--arcane-glow);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading.hidden { display: none; }
+
+  .controls-hint {
+    position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: var(--text-dim); letter-spacing: 1px;
+    text-align: center; line-height: 1.6; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- 加载画面 -->
+<div id="loading"><div class="spinner"></div><div>正在唤醒远古圣所…</div></div>
+
+<!-- ===================== 游戏 HUD ===================== -->
+<div id="hud" class="hidden">
+  <!-- 左上：等级 + 生命 + 法力 -->
+  <div id="vitals" class="panel">
+    <div class="level-row">
+      <div id="level-badge">1</div>
+      <div class="level-meta">
+        <div class="name">流浪法师</div>
+        <div class="sub">Arcane Wanderer</div>
+      </div>
+    </div>
+    <div class="bar"><div class="fill" id="hp-fill"></div><div class="label" id="hp-label">100 / 100</div></div>
+    <div class="bar"><div class="fill" id="mp-fill"></div><div class="label" id="mp-label">100 / 100</div></div>
+  </div>
+
+  <!-- 顶部中央：属性快览 -->
+  <div id="stats-quick" class="panel">
+    <div class="stat"><div class="v" id="stat-atk">10</div><div class="k">攻击</div></div>
+    <div class="stat"><div class="v" id="stat-spd">6.0</div><div class="k">移速</div></div>
+    <div class="stat"><div class="v" id="stat-crit">10%</div><div class="k">暴击</div></div>
+  </div>
+
+  <!-- 右上：波次信息 -->
+  <div id="wave-info" class="panel">
+    <div class="wave-num" id="wave-num">1</div>
+    <div class="wave-label">波次 / WAVE</div>
+    <div class="enemy-count" id="enemy-count">敌人: 0</div>
+    <div class="timer" id="wave-timer"></div>
+  </div>
+
+  <!-- 底部中央：XP + 热键栏 -->
+  <div id="bottom-center">
+    <div id="hotbar">
+      <div class="slot" data-skill="0"><span class="key">1</span>🔥<span class="cost">10</span><div class="cd-overlay"></div></div>
+      <div class="slot" data-skill="1"><span class="key">2</span>❄️<span class="cost">25</span><div class="cd-overlay"></div></div>
+      <div class="slot" data-skill="2"><span class="key">3</span>⚡<span class="cost">20</span><div class="cd-overlay"></div></div>
+    </div>
+    <div id="xp-bar"><div id="xp-fill"></div><div id="xp-text">XP 0 / 100</div></div>
+  </div>
+
+  <!-- 左下：亮度滑块 -->
+  <div id="brightness-ctl" class="panel">
+    <label>环境亮度 / Brightness</label>
+    <div class="row">
+      <input type="range" id="brightness" min="20" max="200" value="100" />
+      <span id="brightness-val">100</span>
+    </div>
+  </div>
+
+  <!-- 准星 -->
+  <div id="crosshair"></div>
+
+  <div class="controls-hint" id="controls-hint">WASD 移动 · 鼠标 视角 · 左键/1 火球 · 2 冰冻 · 3 闪电冲刺 · I 背包 · 点击锁定鼠标</div>
+</div>
+
+<!-- 浮动战斗文字层 -->
+<div id="floating-layer"></div>
+
+<!-- 波次横幅 -->
+<div id="wave-banner"><div class="big" id="banner-big">第 1 波</div><div class="small" id="banner-small">敌人来袭</div></div>
+
+<!-- toast -->
+<div id="toast" class="panel"></div>
+
+<!-- ===================== 库存面板 ===================== -->
+<div id="inventory" class="panel">
+  <h2>背包与能力 · Grimoire</h2>
+  <div class="hint">按 I 关闭 · 悬停查看词条说明</div>
+
+  <div class="section-title">角色属性</div>
+  <div class="stat-grid">
+    <div class="stat-cell"><div class="k">最大生命</div><div class="v" id="inv-hp">100</div></div>
+    <div class="stat-cell"><div class="k">最大法力</div><div class="v" id="inv-mp">100</div></div>
+    <div class="stat-cell"><div class="k">攻击强度</div><div class="v" id="inv-atk">10</div></div>
+    <div class="stat-cell"><div class="k">移动速度</div><div class="v" id="inv-spd">6.0</div></div>
+    <div class="stat-cell"><div class="k">暴击几率</div><div class="v" id="inv-crit">10%</div></div>
+    <div class="stat-cell"><div class="k">吸血 / 法力折扣</div><div class="v" id="inv-misc">0% / 0%</div></div>
+  </div>
+
+  <div class="section-title">被动圣物 · Passive Relics</div>
+  <div class="item-grid" id="passive-grid"></div>
+</div>
+
+<!-- 物品工具提示 -->
+<div id="tooltip"><div class="t-name"></div><div class="t-desc"></div><div class="t-count"></div></div>
+
+<!-- ===================== 主菜单 ===================== -->
+<div id="main-menu" class="overlay hidden">
+  <div class="menu-box panel">
+    <div class="title">遗迹回响</div>
+    <div class="subtitle">Echoes of the Ruined Sanctuary</div>
+    <div class="save-preview none" id="save-preview">暂无存档</div>
+    <button class="btn" id="btn-continue" disabled>继续征程 · Continue Run</button>
+    <button class="btn" id="btn-new">全新征程 · New Run</button>
+  </div>
+</div>
+
+<!-- ===================== 游戏结束 ===================== -->
+<div id="gameover" class="overlay hidden">
+  <div class="menu-box panel">
+    <div class="title">陨落</div>
+    <div class="subtitle">You Have Fallen</div>
+    <div class="gameover-stats" id="gameover-stats"></div>
+    <button class="btn danger" id="btn-restart">重新开始 · Restart</button>
+    <button class="btn" id="btn-menu">返回主菜单 · Main Menu</button>
+  </div>
+</div>
+
+<!-- ============================================================
+                         游戏逻辑
+============================================================ -->
+<script type="module">
+import * as THREE from 'three';
+
+/* ============================================================
+   0. 常量与配置
+============================================================ */
+const SAVE_KEY = 'echoes_sanctuary_save_v1';
+const ARENA_RADIUS = 42;          // 竞技场半径（隐形墙）
+
+// 技能定义：火球 / 冰冻AoE / 闪电冲刺
+const SKILLS = [
+  { id: 'fireball', name: '奥术火球', icon: '🔥', manaCost: 10, cooldown: 0.45, color: 0xff6a2b },
+  { id: 'frost',    name: '寒冰新星', icon: '❄️', manaCost: 25, cooldown: 4.0,  color: 0x66c8ff },
+  { id: 'dash',     name: '闪电冲刺', icon: '⚡', manaCost: 20, cooldown: 3.0,  color: 0xffe14d },
+];
+
+// 被动圣物定义
+const RELICS = {
+  vampiric:  { name: '吸血魔戒', icon: '💍', desc: '造成伤害时回复其 15% 的生命值（可叠加）。', apply: s => s.lifesteal += 0.15 },
+  haste:     { name: '疾风之靴', icon: '👢', desc: '移动速度 +12%（可叠加）。',              apply: s => s.speedMult += 0.12 },
+  focus:     { name: '奥术核心', icon: '🔮', desc: '所有技能法力消耗 -15%（可叠加，最低 20%）。', apply: s => s.manaDiscount = Math.min(0.8, s.manaDiscount + 0.15) },
+  power:     { name: '狂怒符文', icon: '🗡️', desc: '攻击强度 +20%（可叠加）。',              apply: s => s.atkMult += 0.20 },
+  clarity:   { name: '智慧宝石', icon: '📘', desc: '最大法力 +25，并加快法力回复（可叠加）。', apply: s => { s.maxMpBonus += 25; s.mpRegenBonus += 3; } },
+  vitality:  { name: '生命护符', icon: '❤️', desc: '最大生命 +30（可叠加）。',               apply: s => s.maxHpBonus += 30 },
+};
+const RELIC_KEYS = Object.keys(RELICS);
+
+// 敌人原型
+const ENEMY_TYPES = {
+  grunt:   { name: '腐化行尸', hp: 30,  speed: 2.6, dmg: 8,  radius: 0.9, xp: 8,  color: 0x6b8f3a, ranged: false, scale: 1.0 },
+  cultist: { name: '暗影邪徒', hp: 22,  speed: 2.0, dmg: 12, radius: 0.8, xp: 14, color: 0x8a4fd4, ranged: true,  scale: 1.0, range: 18, projSpeed: 9, fireRate: 2.2 },
+  brute:   { name: '巨岩魔像', hp: 120, speed: 1.5, dmg: 26, radius: 1.8, xp: 40, color: 0xc0532a, ranged: false, scale: 2.0, telegraph: 1.1 },
+};
+
+/* ============================================================
+   1. 音频引擎（Web Audio API 合成，无外部资源）
+============================================================ */
+class AudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.droneNodes = null;
+    this.enabled = true;
+  }
+  // 需在用户手势后初始化（浏览器自动播放策略）
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.5;
+    this.master.connect(this.ctx.destination);
+  }
+  resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+
+  // 低沉诡异的环境嗡鸣（两个失谐振荡器 + 缓慢 LFO）
+  startDrone() {
+    if (!this.ctx || this.droneNodes) return;
+    const g = this.ctx.createGain();
+    g.gain.value = 0.0;
+    g.connect(this.master);
+    g.gain.linearRampToValueAtTime(0.16, this.ctx.currentTime + 3);
+
+    const o1 = this.ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = 55;
+    const o2 = this.ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 55.4;
+    const o3 = this.ctx.createOscillator(); o3.type = 'triangle'; o3.frequency.value = 110;
+    const o3g = this.ctx.createGain(); o3g.gain.value = 0.04;
+
+    const filt = this.ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 400;
+
+    // 缓慢起伏的 LFO 调制音量，营造呼吸感
+    const lfo = this.ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.08;
+    const lfoG = this.ctx.createGain(); lfoG.gain.value = 0.05;
+    lfo.connect(lfoG); lfoG.connect(g.gain);
+
+    o1.connect(filt); o2.connect(filt); o3.connect(o3g); o3g.connect(filt);
+    filt.connect(g);
+    o1.start(); o2.start(); o3.start(); lfo.start();
+    this.droneNodes = { o1, o2, o3, lfo, g };
+  }
+
+  // 通用合成音效
+  _blip(type, freq, dur, vol, sweepTo, curve = 'exp') {
+    if (!this.ctx || !this.enabled) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (sweepTo) {
+      if (curve === 'exp') o.frequency.exponentialRampToValueAtTime(Math.max(1, sweepTo), t + dur);
+      else o.frequency.linearRampToValueAtTime(sweepTo, t + dur);
+    }
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  _noise(dur, vol, filterFreq) {
+    if (!this.ctx || !this.enabled) return;
+    const t = this.ctx.currentTime;
+    const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * dur, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const filt = this.ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = filterFreq;
+    const g = this.ctx.createGain(); g.gain.value = vol;
+    src.connect(filt); filt.connect(g); g.connect(this.master);
+    src.start(t);
+  }
+
+  cast(skillId) {
+    if (skillId === 'fireball') this._blip('sawtooth', 320, 0.22, 0.18, 120);
+    else if (skillId === 'frost') { this._blip('triangle', 900, 0.5, 0.16, 300, 'lin'); this._noise(0.4, 0.06, 2000); }
+    else if (skillId === 'dash') this._blip('square', 180, 0.3, 0.16, 1200);
+  }
+  impact() { this._noise(0.18, 0.14, 900); this._blip('sine', 140, 0.14, 0.1, 60); }
+  hurt() { this._blip('sawtooth', 220, 0.25, 0.2, 80, 'lin'); this._noise(0.15, 0.1, 500); }
+  pickup() { this._blip('sine', 660, 0.12, 0.12, 990); }
+  levelup() {
+    // 上扬的欢快琶音
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this._blip('triangle', f, 0.28, 0.16, f * 1.02), i * 90));
+  }
+  enemyDie() { this._blip('sawtooth', 160, 0.3, 0.14, 40, 'lin'); this._noise(0.25, 0.08, 700); }
+  waveStart() { [392, 523].forEach((f, i) => setTimeout(() => this._blip('square', f, 0.35, 0.12, f), i * 140)); }
+}
+
+/* ============================================================
+   2. 游戏主类
+============================================================ */
+class Game {
+  constructor() {
+    this.audio = new AudioEngine();
+    this.clock = new THREE.Clock();
+    this.state = 'menu';          // menu | playing | paused | dead
+    this.tmp = new THREE.Vector3();
+
+    // 运行时对象集合
+    this.enemies = [];
+    this.projectiles = [];        // 玩家投射物
+    this.enemyProjectiles = [];   // 敌人投射物
+    this.orbs = [];               // 掉落经验球
+    this.particleBursts = [];     // 粒子爆发效果
+    this.aoeEffects = [];         // AoE 视觉环
+
+    this.keys = {};
+    this.mouse = { locked: false };
+    this.cameraYaw = 0;
+    this.cameraPitch = 0.35;
+    this.cameraDist = 11;
+
+    this.skillCooldowns = [0, 0, 0];
+    this.frostReady = true;
+
+    this.initThree();
+    this.buildSanctuary();
+    this.initPlayer();
+    this.bindEvents();
+    this.cacheHud();
+
+    document.getElementById('loading').classList.add('hidden');
+    this.showMenu();
+
+    // 启动渲染循环
+    this.renderer.setAnimationLoop(() => this.loop());
+  }
+
+  /* ---------------- Three.js 场景初始化 ---------------- */
+  initThree() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0618);
+    this.scene.fog = new THREE.FogExp2(0x1a0f33, 0.018);   // 体积雾感
+
+    this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    document.body.appendChild(this.renderer.domElement);
+
+    // ---- 灯光 ----
+    // 环境光（受亮度滑块控制）
+    this.ambient = new THREE.AmbientLight(0x4a3a7a, 0.6);
+    this.scene.add(this.ambient);
+
+    // 半球光提供柔和的上下补光
+    this.hemi = new THREE.HemisphereLight(0x6a5aff, 0x1a0f33, 0.5);
+    this.scene.add(this.hemi);
+
+    // 主方向光（月光感），投射阴影
+    this.moon = new THREE.DirectionalLight(0x9a8aff, 0.7);
+    this.moon.position.set(20, 40, 15);
+    this.moon.castShadow = true;
+    this.moon.shadow.mapSize.set(2048, 2048);
+    this.moon.shadow.camera.near = 1;
+    this.moon.shadow.camera.far = 120;
+    const sc = 60;
+    this.moon.shadow.camera.left = -sc; this.moon.shadow.camera.right = sc;
+    this.moon.shadow.camera.top = sc; this.moon.shadow.camera.bottom = -sc;
+    this.moon.shadow.bias = -0.0004;
+    this.scene.add(this.moon);
+
+    this.brightnessMult = 1.0;   // 由滑块设置
+  }
+
+  /* ---------------- 构建远古圣所场景 ---------------- */
+  buildSanctuary() {
+    const rng = (a, b) => a + Math.random() * (b - a);
+
+    // ---- 地面 ----
+    const groundGeo = new THREE.CircleGeometry(ARENA_RADIUS + 6, 64);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x241a3a, roughness: 0.95, metalness: 0.1 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // 地面上的发光魔法符文圈
+    const runeGeo = new THREE.RingGeometry(ARENA_RADIUS - 2, ARENA_RADIUS - 1.4, 96);
+    const runeMat = new THREE.MeshBasicMaterial({ color: 0x7a5aff, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+    const rune = new THREE.Mesh(runeGeo, runeMat);
+    rune.rotation.x = -Math.PI / 2; rune.position.y = 0.02;
+    this.scene.add(rune);
+    const rune2 = new THREE.Mesh(new THREE.RingGeometry(6, 6.4, 64), runeMat.clone());
+    rune2.rotation.x = -Math.PI / 2; rune2.position.y = 0.02;
+    this.scene.add(rune2);
+
+    // ---- 破碎的石柱（围绕竞技场散布）----
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x3a3050, roughness: 0.9 });
+    const pillarCount = 16;
+    for (let i = 0; i < pillarCount; i++) {
+      const ang = (i / pillarCount) * Math.PI * 2 + rng(-0.15, 0.15);
+      const r = ARENA_RADIUS - rng(2, 8);
+      const h = rng(4, 11);
+      const geo = new THREE.CylinderGeometry(rng(0.8, 1.2), rng(1.0, 1.5), h, 8);
+      const p = new THREE.Mesh(geo, pillarMat);
+      p.position.set(Math.cos(ang) * r, h / 2 - rng(0, 1.5), Math.sin(ang) * r);
+      p.rotation.z = rng(-0.08, 0.08);
+      p.castShadow = true; p.receiveShadow = true;
+      this.scene.add(p);
+      // 部分柱子顶部有碎块
+      if (Math.random() > 0.5) {
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(rng(1.6,2.4), rng(0.6,1), rng(1.6,2.4)), pillarMat);
+        cap.position.set(p.position.x + rng(-0.5,0.5), h + rng(-1,0.3), p.position.z + rng(-0.5,0.5));
+        cap.rotation.set(rng(0,0.4), rng(0,3), rng(0,0.4));
+        cap.castShadow = true;
+        this.scene.add(cap);
+      }
+    }
+
+    // ---- 散落的碎石 ----
+    const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x2e2642, roughness: 1 });
+    for (let i = 0; i < 40; i++) {
+      const s = rng(0.3, 1.1);
+      const geo = new THREE.DodecahedronGeometry(s, 0);
+      const m = new THREE.Mesh(geo, rubbleMat);
+      const ang = rng(0, Math.PI * 2), r = rng(3, ARENA_RADIUS - 1);
+      m.position.set(Math.cos(ang) * r, s * 0.4, Math.sin(ang) * r);
+      m.rotation.set(rng(0,3), rng(0,3), rng(0,3));
+      m.castShadow = true; m.receiveShadow = true;
+      this.scene.add(m);
+    }
+
+    // ---- 发光的魔法水晶（带点光源）----
+    this.crystals = [];
+    const crystalColors = [0x9a5aff, 0x5ac8ff, 0xff5aa8, 0x5affc8];
+    for (let i = 0; i < 9; i++) {
+      const col = crystalColors[i % crystalColors.length];
+      const h = rng(2.5, 5);
+      const geo = new THREE.ConeGeometry(rng(0.5, 1), h, 5);
+      const mat = new THREE.MeshStandardMaterial({
+        color: col, emissive: col, emissiveIntensity: 1.4,
+        roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.9,
+      });
+      const c = new THREE.Mesh(geo, mat);
+      const ang = rng(0, Math.PI * 2), r = rng(8, ARENA_RADIUS - 4);
+      c.position.set(Math.cos(ang) * r, h / 2, Math.sin(ang) * r);
+      c.rotation.z = rng(-0.2, 0.2);
+      c.castShadow = true;
+      this.scene.add(c);
+
+      const light = new THREE.PointLight(col, 1.6, 20, 2);
+      light.position.copy(c.position); light.position.y += h * 0.3;
+      this.scene.add(light);
+      this.crystals.push({ mesh: c, light, baseIntensity: 1.6, phase: rng(0, Math.PI * 2) });
+    }
+
+    // ---- 中央大水晶（地标）----
+    const bigGeo = new THREE.OctahedronGeometry(2.2, 0);
+    const bigMat = new THREE.MeshStandardMaterial({ color: 0xb98cff, emissive: 0x7a4aff, emissiveIntensity: 1.6, roughness: 0.1, metalness: 0.5, transparent: true, opacity: 0.85 });
+    this.bigCrystal = new THREE.Mesh(bigGeo, bigMat);
+    this.bigCrystal.position.set(0, 3.5, 0);
+    this.bigCrystal.castShadow = true;
+    this.scene.add(this.bigCrystal);
+    const bigLight = new THREE.PointLight(0xb98cff, 2.2, 40, 2);
+    bigLight.position.set(0, 5, 0);
+    this.scene.add(bigLight);
+    this.crystals.push({ mesh: this.bigCrystal, light: bigLight, baseIntensity: 2.2, phase: 0, isBig: true });
+
+    // ---- 漂浮的尘埃/魔法微粒 ----
+    const dustCount = 400;
+    const dustGeo = new THREE.BufferGeometry();
+    const dustPos = new Float32Array(dustCount * 3);
+    for (let i = 0; i < dustCount; i++) {
+      dustPos[i*3]   = rng(-ARENA_RADIUS, ARENA_RADIUS);
+      dustPos[i*3+1] = rng(0.5, 18);
+      dustPos[i*3+2] = rng(-ARENA_RADIUS, ARENA_RADIUS);
+    }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    const dustMat = new THREE.PointsMaterial({ color: 0xb9a2ff, size: 0.12, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.dust = new THREE.Points(dustGeo, dustMat);
+    this.scene.add(this.dust);
+  }
+
+  /* ---------------- 玩家初始化 ---------------- */
+  initPlayer() {
+    // 玩家由一个法师形体（身体 + 头 + 法杖光球）组成
+    this.player = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3355aa, roughness: 0.6, emissive: 0x111a44, emissiveIntensity: 0.5 });
+    const robe = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.7, 10), bodyMat);
+    robe.position.y = 0.85; robe.castShadow = true;
+    this.player.add(robe);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), new THREE.MeshStandardMaterial({ color: 0xe0c8a0, roughness: 0.7 }));
+    head.position.y = 1.85; head.castShadow = true;
+    this.player.add(head);
+    // 帽子
+    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.9, 10), bodyMat);
+    hat.position.y = 2.35;
+    this.player.add(hat);
+    // 法杖顶端光球
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshBasicMaterial({ color: 0x8fd4ff }));
+    orb.position.set(0.55, 1.6, 0.2);
+    this.player.add(orb);
+    this.playerOrb = orb;
+    const orbLight = new THREE.PointLight(0x8fd4ff, 1.2, 6, 2);
+    orbLight.position.copy(orb.position);
+    this.player.add(orbLight);
+
+    this.scene.add(this.player);
+
+    // 玩家逻辑状态
+    this.player.position.set(0, 0, 12);
+    this.playerVel = new THREE.Vector3();
+  }
+
+  /* ---------------- 缓存 HUD DOM ---------------- */
+  cacheHud() {
+    this.dom = {
+      hud: document.getElementById('hud'),
+      hpFill: document.getElementById('hp-fill'), hpLabel: document.getElementById('hp-label'),
+      mpFill: document.getElementById('mp-fill'), mpLabel: document.getElementById('mp-label'),
+      levelBadge: document.getElementById('level-badge'),
+      xpFill: document.getElementById('xp-fill'), xpText: document.getElementById('xp-text'),
+      waveNum: document.getElementById('wave-num'), enemyCount: document.getElementById('enemy-count'),
+      waveTimer: document.getElementById('wave-timer'),
+      statAtk: document.getElementById('stat-atk'), statSpd: document.getElementById('stat-spd'), statCrit: document.getElementById('stat-crit'),
+      floating: document.getElementById('floating-layer'),
+      toast: document.getElementById('toast'),
+      banner: document.getElementById('wave-banner'), bannerBig: document.getElementById('banner-big'), bannerSmall: document.getElementById('banner-small'),
+      inventory: document.getElementById('inventory'),
+      passiveGrid: document.getElementById('passive-grid'),
+      tooltip: document.getElementById('tooltip'),
+      slots: [...document.querySelectorAll('#hotbar .slot')],
+    };
+  }
+
+  /* ---------------- 事件绑定 ---------------- */
+  bindEvents() {
+    addEventListener('resize', () => {
+      this.camera.aspect = innerWidth / innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(innerWidth, innerHeight);
+    });
+
+    addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      this.keys[k] = true;
+      if (this.state !== 'playing') return;
+      if (k === 'i') this.toggleInventory();
+      if (k === '1') this.castSkill(0);
+      if (k === '2') this.castSkill(1);
+      if (k === '3') this.castSkill(2);
+    });
+    addEventListener('keyup', (e) => { this.keys[e.key.toLowerCase()] = false; });
+
+    // 指针锁定 + 鼠标视角
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener('click', () => {
+      if (this.state === 'playing' && !this.dom.inventory.classList.contains('open')) {
+        canvas.requestPointerLock();
+      }
+    });
+    document.addEventListener('pointerlockchange', () => {
+      this.mouse.locked = (document.pointerLockElement === canvas);
+    });
+    addEventListener('mousemove', (e) => {
+      if (!this.mouse.locked) return;
+      this.cameraYaw   -= e.movementX * 0.0022;
+      this.cameraPitch -= e.movementY * 0.0022;
+      this.cameraPitch = Math.max(-0.2, Math.min(1.2, this.cameraPitch));
+    });
+    // 左键 = 火球
+    addEventListener('mousedown', (e) => {
+      if (e.button === 0 && this.state === 'playing' && this.mouse.locked) this.castSkill(0);
+    });
+
+    // 亮度滑块
+    const brightness = document.getElementById('brightness');
+    const brightnessVal = document.getElementById('brightness-val');
+    brightness.addEventListener('input', () => {
+      const v = parseInt(brightness.value);
+      brightnessVal.textContent = v;
+      this.brightnessMult = v / 100;
+      this.applyBrightness();
+    });
+
+    // 热键栏点击释放
+    this.dom = this.dom || {};
+    document.querySelectorAll('#hotbar .slot').forEach(slot => {
+      slot.addEventListener('click', () => this.castSkill(parseInt(slot.dataset.skill)));
+    });
+
+    // 菜单按钮
+    document.getElementById('btn-new').addEventListener('click', () => this.startRun(true));
+    document.getElementById('btn-continue').addEventListener('click', () => this.startRun(false));
+    document.getElementById('btn-restart').addEventListener('click', () => this.startRun(true));
+    document.getElementById('btn-menu').addEventListener('click', () => {
+      document.getElementById('gameover').classList.add('hidden');
+      this.showMenu();
+    });
+  }
+
+  applyBrightness() {
+    const m = this.brightnessMult;
+    this.ambient.intensity = 0.6 * m;
+    this.hemi.intensity = 0.5 * m;
+    this.moon.intensity = 0.7 * m;
+    this.renderer.toneMappingExposure = 0.6 + 0.6 * m;
+  }
+
+  /* ============================================================
+     3. 存档系统（localStorage）
+  ============================================================ */
+  loadSave() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  writeSave() {
+    const s = this.stats;
+    const data = {
+      level: s.level, xp: s.xp, xpNext: s.xpNext,
+      maxHpBonus: s.maxHpBonus, maxMpBonus: s.maxMpBonus,
+      relics: this.relicCounts,
+      bestWave: Math.max(this.bestWave || 0, this.wave),
+    };
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch {}
+  }
+  clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch {} }
+
+  /* ---------------- 主菜单 ---------------- */
+  showMenu() {
+    this.state = 'menu';
+    this.dom.hud.classList.add('hidden');
+    document.getElementById('gameover').classList.add('hidden');
+    const menu = document.getElementById('main-menu');
+    menu.classList.remove('hidden');
+    if (document.pointerLockElement) document.exitPointerLock();
+
+    const save = this.loadSave();
+    const preview = document.getElementById('save-preview');
+    const btnContinue = document.getElementById('btn-continue');
+    if (save) {
+      btnContinue.disabled = false;
+      preview.classList.remove('none');
+      const relicTotal = Object.values(save.relics || {}).reduce((a, b) => a + b, 0);
+      preview.innerHTML = `存档进度 · 等级 <b>${save.level}</b> · 最高波次 <b>${save.bestWave || 0}</b><br>圣物 <b>${relicTotal}</b> 件 · 生命加成 <b>+${save.maxHpBonus || 0}</b>`;
+    } else {
+      btnContinue.disabled = true;
+      preview.classList.add('none');
+      preview.textContent = '暂无存档 — 开始你的第一段征程吧';
+    }
+  }
+
+  /* ============================================================
+     4. 开始一局游戏
+  ============================================================ */
+  startRun(isNew) {
+    // 音频需在用户手势内初始化
+    this.audio.init();
+    this.audio.resume();
+    this.audio.startDrone();
+
+    const save = (!isNew && this.loadSave()) || null;
+
+    // ---- 基础属性 ----
+    this.stats = {
+      level: save ? save.level : 1,
+      xp: save ? save.xp : 0,
+      xpNext: save ? save.xpNext : 100,
+      baseMaxHp: 100, baseMaxMp: 100, baseAtk: 10, baseSpeed: 6.0, baseCrit: 0.10,
+      // 圣物加成（先清零，稍后按圣物重算）
+      maxHpBonus: 0, maxMpBonus: 0,
+      atkMult: 1, speedMult: 1, critBonus: 0,
+      lifesteal: 0, manaDiscount: 0, mpRegenBonus: 0,
+    };
+    // 等级带来的属性成长
+    const lvlBonus = (this.stats.level - 1);
+    this.stats.baseMaxHp += lvlBonus * 12;
+    this.stats.baseMaxMp += lvlBonus * 8;
+    this.stats.baseAtk += lvlBonus * 2;
+
+    // ---- 圣物 ----
+    this.relicCounts = {};
+    RELIC_KEYS.forEach(k => this.relicCounts[k] = 0);
+    if (save && save.relics) {
+      for (const k of RELIC_KEYS) this.relicCounts[k] = save.relics[k] || 0;
+    }
+    // 保存中的额外 bonus（旧版兼容，忽略；用圣物重算）
+    this.recomputeStats();
+
+    // ---- 当前生命/法力拉满 ----
+    this.hp = this.maxHp;
+    this.mp = this.maxMp;
+
+    // ---- 波次/世界 ----
+    this.wave = 0;
+    this.bestWave = save ? (save.bestWave || 0) : 0;
+    this.waveState = 'intro';    // intro | active | cleared
+    this.waveTimer = 1.5;
+    this.enemiesToSpawn = [];
+    this.spawnTimer = 0;
+    this.runKills = 0;
+    this.runStartTime = performance.now();
+
+    // ---- 清理场上对象 ----
+    this.clearEntities();
+
+    // ---- 玩家复位 ----
+    this.player.position.set(0, 0, 12);
+    this.playerVel.set(0, 0, 0);
+    this.cameraYaw = Math.PI;   // 面向场景中心
+    this.cameraPitch = 0.35;
+    this.skillCooldowns = [0, 0, 0];
+
+    // ---- UI ----
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('gameover').classList.add('hidden');
+    this.dom.hud.classList.remove('hidden');
+    this.dom.inventory.classList.remove('open');
+    this.renderPassiveGrid();
+    this.applyBrightness();
+    this.updateHud();
+
+    this.state = 'playing';
+    this.writeSave();  // 立即存一次
+  }
+
+  clearEntities() {
+    [...this.enemies, ...this.projectiles, ...this.enemyProjectiles, ...this.orbs].forEach(e => {
+      if (e.mesh) this.scene.remove(e.mesh);
+    });
+    this.aoeEffects.forEach(a => this.scene.remove(a.mesh));
+    this.particleBursts.forEach(p => this.scene.remove(p.points));
+    this.enemies = []; this.projectiles = []; this.enemyProjectiles = [];
+    this.orbs = []; this.aoeEffects = []; this.particleBursts = [];
+  }
+
+  /* ---------------- 根据圣物 + 等级重算最终属性 ---------------- */
+  recomputeStats() {
+    const s = this.stats;
+    // 每次重算前把圣物 bonus 归零，再按当前圣物数量累加
+    s.maxHpBonus = 0; s.maxMpBonus = 0;
+    s.atkMult = 1; s.speedMult = 1; s.critBonus = 0;
+    s.lifesteal = 0; s.manaDiscount = 0; s.mpRegenBonus = 0;
+    for (const k of RELIC_KEYS) {
+      const count = this.relicCounts[k] || 0;
+      for (let i = 0; i < count; i++) RELICS[k].apply(s);
+    }
+    this.maxHp = s.baseMaxHp + s.maxHpBonus;
+    this.maxMp = s.baseMaxMp + s.maxMpBonus;
+    this.atk = s.baseAtk * s.atkMult;
+    this.speed = s.baseSpeed * s.speedMult;
+    this.crit = Math.min(0.9, s.baseCrit + s.critBonus);
+  }
+
+  /* ============================================================
+     5. 波次与刷怪
+  ============================================================ */
+  startWave(n) {
+    this.wave = n;
+    this.waveState = 'active';
+    // 根据波次组合敌人；随波次数量与强度递增
+    const list = [];
+    const gruntN = 3 + Math.floor(n * 1.5);
+    const cultistN = n >= 2 ? Math.floor(n * 0.8) : 0;
+    const bruteN = n >= 3 ? Math.floor((n - 2) / 2) + 1 : 0;
+    for (let i = 0; i < gruntN; i++) list.push('grunt');
+    for (let i = 0; i < cultistN; i++) list.push('cultist');
+    for (let i = 0; i < bruteN; i++) list.push('brute');
+    // 打乱
+    for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+    this.enemiesToSpawn = list;
+    this.spawnTimer = 0;
+    this.waveDifficulty = 1 + (n - 1) * 0.15;   // 敌人 hp/dmg 缩放
+
+    // UI 横幅 + 音效
+    this.dom.bannerBig.textContent = `第 ${n} 波`;
+    this.dom.bannerSmall.textContent = `${list.length} 个敌人来袭`;
+    this.dom.banner.classList.remove('show'); void this.dom.banner.offsetWidth;
+    this.dom.banner.classList.add('show');
+    this.audio.waveStart();
+    this.updateHud();
+  }
+
+  spawnEnemy(type) {
+    const proto = ENEMY_TYPES[type];
+    const g = new THREE.Group();
+
+    // 依类型构建外观
+    let bodyColor = proto.color;
+    if (type === 'grunt') {
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 0.8, 4, 8), new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.9 }));
+      torso.position.y = 0.9; torso.castShadow = true; g.add(torso);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), new THREE.MeshStandardMaterial({ color: 0x8fae5a, roughness: 0.9 }));
+      head.position.y = 1.7; head.castShadow = true; g.add(head);
+    } else if (type === 'cultist') {
+      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 8), new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.7, emissive: 0x3a1a5a, emissiveIntensity: 0.5 }));
+      robe.position.y = 0.8; robe.castShadow = true; g.add(robe);
+      const hood = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.6, 8), new THREE.MeshStandardMaterial({ color: 0x2a1040 }));
+      hood.position.y = 1.7; g.add(hood);
+    } else { // brute
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.8, 1.2), new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.85, emissive: 0x3a1000, emissiveIntensity: 0.3 }));
+      body.position.y = 1.5; body.castShadow = true; g.add(body);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.8), new THREE.MeshStandardMaterial({ color: 0xd0603a, roughness: 0.85 }));
+      head.position.y = 2.7; head.castShadow = true; g.add(head);
+      // 双臂
+      [-1, 1].forEach(sx => {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.3, 0.4), body.material);
+        arm.position.set(sx * 1.0, 1.5, 0); arm.castShadow = true; g.add(arm);
+      });
+    }
+
+    // 出生位置：竞技场边缘随机
+    const ang = Math.random() * Math.PI * 2;
+    const r = ARENA_RADIUS - 3;
+    g.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+    g.scale.setScalar(proto.scale);
+    this.scene.add(g);
+
+    const diff = this.waveDifficulty;
+    this.enemies.push({
+      mesh: g, type,
+      hp: proto.hp * diff, maxHp: proto.hp * diff,
+      speed: proto.speed, dmg: proto.dmg * diff,
+      radius: proto.radius * proto.scale, xp: proto.xp,
+      ranged: !!proto.ranged, range: proto.range || 0,
+      projSpeed: proto.projSpeed || 0, fireTimer: Math.random() * 2,
+      fireRate: proto.fireRate || 0,
+      telegraph: proto.telegraph || 0, telegraphTimer: 0, telegraphing: false,
+      attackCd: 0,
+      hitFlash: 0, frozen: 0,
+      materials: this.collectMaterials(g),
+    });
+  }
+
+  // 收集一个 group 内所有 mesh 的材质（用于命中闪红）
+  collectMaterials(group) {
+    const mats = [];
+    group.traverse(o => { if (o.isMesh) mats.push({ mat: o.material, base: o.material.color.clone(), baseEmissive: o.material.emissive ? o.material.emissive.clone() : null }); });
+    return mats;
+  }
+
+  /* ============================================================
+     6. 技能释放
+  ============================================================ */
+  getAimDirection() {
+    // 依据相机朝向得到水平前向
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    dir.y = 0;
+    if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
+    dir.normalize();
+    return dir;
+  }
+
+  castSkill(idx) {
+    if (this.state !== 'playing') return;
+    if (this.skillCooldowns[idx] > 0) return;
+    const skill = SKILLS[idx];
+    const cost = skill.manaCost * (1 - this.stats.manaDiscount);
+    if (this.mp < cost) { this.toast('法力不足！'); return; }
+
+    this.mp -= cost;
+    this.skillCooldowns[idx] = skill.cooldown;
+    this.audio.cast(skill.id);
+
+    const origin = this.player.position.clone(); origin.y = 1.4;
+    const dir = this.getAimDirection();
+
+    if (skill.id === 'fireball') {
+      this.spawnFireball(origin, dir);
+    } else if (skill.id === 'frost') {
+      this.castFrostNova();
+    } else if (skill.id === 'dash') {
+      this.castDash(dir);
+    }
+    // 法杖光球闪烁
+    this.playerOrb.material.color.setHex(skill.color);
+    this.updateHud();
+  }
+
+  spawnFireball(origin, dir) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff8a3a })
+    );
+    mesh.position.copy(origin);
+    const light = new THREE.PointLight(0xff6a2b, 1.5, 8, 2);
+    mesh.add(light);
+    this.scene.add(mesh);
+    const isCrit = Math.random() < this.crit;
+    this.projectiles.push({
+      mesh, dir: dir.clone(), speed: 26, life: 2.2,
+      dmg: this.atk * (isCrit ? 2 : 1) * 1.0, crit: isCrit, radius: 0.6,
+      kind: 'fireball',
+    });
+  }
+
+  castFrostNova() {
+    // 以玩家为中心的环形 AoE，冻结并伤害范围内敌人
+    const radius = 9;
+    const center = this.player.position.clone();
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.5, 1, 48),
+      new THREE.MeshBasicMaterial({ color: 0x8fe0ff, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2; ring.position.copy(center); ring.position.y = 0.1;
+    this.scene.add(ring);
+    this.aoeEffects.push({ mesh: ring, life: 0.6, maxLife: 0.6, maxR: radius, kind: 'frost' });
+
+    const dmg = this.atk * 0.8;
+    for (const e of this.enemies) {
+      if (e.mesh.position.distanceTo(center) <= radius) {
+        const isCrit = Math.random() < this.crit;
+        this.damageEnemy(e, dmg * (isCrit ? 2 : 1), isCrit);
+        e.frozen = 2.5;   // 冻结 2.5 秒
+      }
+    }
+  }
+
+  castDash(dir) {
+    // 沿瞄准方向瞬间位移，并对沿途敌人造成雷电伤害
+    const dist = 8;
+    const start = this.player.position.clone();
+    const end = start.clone().addScaledVector(dir, dist);
+    // 限制在竞技场内
+    if (end.length() > ARENA_RADIUS - 2) end.setLength(ARENA_RADIUS - 2);
+    // 雷电轨迹特效
+    this.spawnDashTrail(start, end);
+
+    const dmg = this.atk * 1.2;
+    const path = end.clone().sub(start);
+    const pathLen = path.length();
+    const pathDir = path.clone().normalize();
+    for (const e of this.enemies) {
+      // 点到线段距离
+      const toE = e.mesh.position.clone().sub(start);
+      const proj = THREE.MathUtils.clamp(toE.dot(pathDir), 0, pathLen);
+      const closest = start.clone().addScaledVector(pathDir, proj);
+      if (e.mesh.position.distanceTo(closest) < 2.5 + e.radius) {
+        const isCrit = Math.random() < this.crit;
+        this.damageEnemy(e, dmg * (isCrit ? 2 : 1), isCrit);
+      }
+    }
+    this.player.position.copy(end);
+    this.dashInvuln = 0.3;   // 短暂无敌
+  }
+
+  spawnDashTrail(a, b) {
+    const pts = [a.clone().setY(1), b.clone().setY(1)];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 1 }));
+    this.scene.add(line);
+    this.aoeEffects.push({ mesh: line, life: 0.35, maxLife: 0.35, kind: 'dash' });
+    this.spawnParticles(b.clone().setY(1), 0xffe14d, 16);
+  }
+
+  /* ============================================================
+     7. 伤害 / 粒子 / 掉落
+  ============================================================ */
+  damageEnemy(e, dmg, isCrit) {
+    dmg = Math.round(dmg);
+    e.hp -= dmg;
+    e.hitFlash = 0.15;
+    this.floatText(e.mesh.position, dmg, isCrit ? 'crit' : 'enemy', isCrit);
+
+    // 吸血
+    if (this.stats.lifesteal > 0) {
+      const heal = dmg * this.stats.lifesteal;
+      this.hp = Math.min(this.maxHp, this.hp + heal);
+    }
+    if (e.hp <= 0) this.killEnemy(e);
+    this.updateHud();
+  }
+
+  killEnemy(e) {
+    e.dead = true;
+    this.runKills++;
+    this.audio.enemyDie();
+    // 溶解粒子
+    this.spawnParticles(e.mesh.position.clone().setY(1), ENEMY_TYPES[e.type].color, 24);
+    // 掉落经验球
+    this.spawnOrb(e.mesh.position.clone(), e.xp);
+    this.scene.remove(e.mesh);
+  }
+
+  spawnParticles(pos, color, count) {
+    const geo = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const velocities = [];
+    for (let i = 0; i < count; i++) {
+      positions[i*3] = pos.x; positions[i*3+1] = pos.y; positions[i*3+2] = pos.z;
+      velocities.push(new THREE.Vector3(
+        (Math.random()-0.5)*8, Math.random()*7, (Math.random()-0.5)*8
+      ));
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({ color, size: 0.3, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+    const points = new THREE.Points(geo, mat);
+    this.scene.add(points);
+    this.particleBursts.push({ points, velocities, life: 0.8, maxLife: 0.8 });
+  }
+
+  spawnOrb(pos, xp) {
+    const mesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.28, 0),
+      new THREE.MeshBasicMaterial({ color: 0xffd24d })
+    );
+    mesh.position.copy(pos); mesh.position.y = 0.6;
+    const light = new THREE.PointLight(0xffd24d, 0.8, 4, 2);
+    mesh.add(light);
+    this.scene.add(mesh);
+    // 有几率掉落圣物（发光颜色不同）
+    let relic = null;
+    if (Math.random() < 0.16) {
+      relic = RELIC_KEYS[Math.floor(Math.random() * RELIC_KEYS.length)];
+      mesh.material.color.setHex(0xb98cff);
+      light.color.setHex(0xb98cff);
+    }
+    this.orbs.push({ mesh, xp, relic, phase: Math.random() * Math.PI * 2, life: 25 });
+  }
+
+  /* ---------------- 经验 / 升级 ---------------- */
+  gainXp(amount) {
+    this.stats.xp += amount;
+    while (this.stats.xp >= this.stats.xpNext) {
+      this.stats.xp -= this.stats.xpNext;
+      this.levelUp();
+    }
+    this.updateHud();
+  }
+
+  levelUp() {
+    this.stats.level++;
+    this.stats.xpNext = Math.floor(this.stats.xpNext * 1.35 + 20);
+    // 成长
+    this.stats.baseMaxHp += 12;
+    this.stats.baseMaxMp += 8;
+    this.stats.baseAtk += 2;
+    this.recomputeStats();
+    // 升级回满
+    this.hp = this.maxHp;
+    this.mp = this.maxMp;
+    this.audio.levelup();
+    this.toast(`✦ 升级！ 等级 ${this.stats.level} ✦`);
+    this.spawnParticles(this.player.position.clone().setY(1.5), 0xffd24d, 40);
+    this.writeSave();
+  }
+
+  /* ============================================================
+     8. 玩家受伤 / 死亡
+  ============================================================ */
+  damagePlayer(dmg) {
+    if (this.dashInvuln > 0) return;
+    dmg = Math.round(dmg);
+    this.hp -= dmg;
+    this.audio.hurt();
+    this.floatText(this.player.position.clone().setY(2.3), dmg, 'player');
+    // 屏幕红闪
+    this.flashDamage();
+    if (this.hp <= 0) { this.hp = 0; this.die(); }
+    this.updateHud();
+  }
+
+  flashDamage() {
+    let f = document.getElementById('dmg-flash');
+    if (!f) {
+      f = document.createElement('div');
+      f.id = 'dmg-flash';
+      f.style.cssText = 'position:fixed;inset:0;z-index:12;pointer-events:none;background:radial-gradient(circle,transparent 40%,rgba(255,30,50,0.5));opacity:0;transition:opacity 0.1s;';
+      document.body.appendChild(f);
+    }
+    f.style.opacity = '1';
+    setTimeout(() => { f.style.opacity = '0'; }, 120);
+  }
+
+  die() {
+    this.state = 'dead';
+    if (document.pointerLockElement) document.exitPointerLock();
+    // 记录最高波次并清档
+    const finalBest = Math.max(this.bestWave, this.wave);
+    const runTime = Math.floor((performance.now() - this.runStartTime) / 1000);
+    const relicTotal = Object.values(this.relicCounts).reduce((a, b) => a + b, 0);
+
+    // 结束画面统计
+    const stats = document.getElementById('gameover-stats');
+    stats.innerHTML = `
+      <div class="row"><span class="k">达到波次</span><span class="v">${this.wave}</span></div>
+      <div class="row"><span class="k">角色等级</span><span class="v">${this.stats.level}</span></div>
+      <div class="row"><span class="k">击杀数</span><span class="v">${this.runKills}</span></div>
+      <div class="row"><span class="k">收集圣物</span><span class="v">${relicTotal}</span></div>
+      <div class="row"><span class="k">历史最高波次</span><span class="v">${finalBest}</span></div>
+      <div class="row"><span class="k">生存时间</span><span class="v">${Math.floor(runTime/60)}分${runTime%60}秒</span></div>
+    `;
+    // 死亡即清空当前存档（roguelike 永久死亡）
+    this.clearSave();
+    setTimeout(() => document.getElementById('gameover').classList.remove('hidden'), 600);
+  }
+
+  /* ============================================================
+     9. 主循环
+  ============================================================ */
+  loop() {
+    const dt = Math.min(this.clock.getDelta(), 0.05);
+    this.animateAmbient(dt);
+    if (this.state === 'playing') {
+      this.updatePlayer(dt);
+      this.updateWaves(dt);
+      this.updateEnemies(dt);
+      this.updateProjectiles(dt);
+      this.updateEnemyProjectiles(dt);
+      this.updateOrbs(dt);
+      this.updateCooldowns(dt);
+      this.regen(dt);
+    }
+    this.updateParticles(dt);
+    this.updateAoe(dt);
+    this.updateCamera(dt);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // 场景恒定动画（水晶脉动、尘埃漂浮），无论状态如何
+  animateAmbient(dt) {
+    const t = performance.now() * 0.001;
+    for (const c of this.crystals) {
+      const pulse = 1 + Math.sin(t * 1.2 + c.phase) * 0.25;
+      c.light.intensity = c.baseIntensity * pulse * this.brightnessMult;
+      c.mesh.material.emissiveIntensity = (c.isBig ? 1.6 : 1.4) * pulse;
+      if (c.isBig) c.mesh.rotation.y += dt * 0.3;
+    }
+    if (this.bigCrystal) this.bigCrystal.rotation.y += dt * 0.2;
+    // 尘埃缓慢上升并循环
+    if (this.dust) {
+      const pos = this.dust.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        let y = pos.getY(i) + dt * 0.3;
+        if (y > 18) y = 0.5;
+        pos.setY(i, y);
+      }
+      pos.needsUpdate = true;
+      this.dust.rotation.y += dt * 0.01;
+    }
+    if (this.playerOrb) {
+      // 光球颜色缓慢回到默认蓝
+      this.playerOrb.material.color.lerp(new THREE.Color(0x8fd4ff), dt * 3);
+    }
+  }
+
+  updatePlayer(dt) {
+    if (this.dashInvuln > 0) this.dashInvuln -= dt;
+    // 若背包打开则暂停移动输入
+    const invOpen = this.dom.inventory.classList.contains('open');
+    const move = new THREE.Vector3();
+    if (!invOpen) {
+      // 相对相机的移动方向
+      const forward = new THREE.Vector3(-Math.sin(this.cameraYaw), 0, -Math.cos(this.cameraYaw));
+      const right = new THREE.Vector3(Math.cos(this.cameraYaw), 0, -Math.sin(this.cameraYaw));
+      if (this.keys['w']) move.add(forward);
+      if (this.keys['s']) move.sub(forward);
+      if (this.keys['d']) move.add(right);
+      if (this.keys['a']) move.sub(right);
+    }
+    if (move.lengthSq() > 0) {
+      move.normalize();
+      this.player.position.addScaledVector(move, this.speed * dt);
+      // 朝向移动方向
+      const targetAngle = Math.atan2(move.x, move.z);
+      this.player.rotation.y = this.lerpAngle(this.player.rotation.y, targetAngle, dt * 12);
+    }
+    // 限制在竞技场内
+    const d = Math.hypot(this.player.position.x, this.player.position.z);
+    if (d > ARENA_RADIUS - 2) {
+      const s = (ARENA_RADIUS - 2) / d;
+      this.player.position.x *= s; this.player.position.z *= s;
+    }
+  }
+
+  lerpAngle(a, b, t) {
+    let diff = b - a;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return a + diff * Math.min(1, t);
+  }
+
+  updateWaves(dt) {
+    if (this.waveState === 'intro') {
+      this.waveTimer -= dt;
+      this.dom.waveTimer.textContent = `下一波: ${Math.ceil(this.waveTimer)}s`;
+      if (this.waveTimer <= 0) this.startWave(this.wave + 1);
+      return;
+    }
+    if (this.waveState === 'active') {
+      // 逐个刷出待生成敌人
+      if (this.enemiesToSpawn.length > 0) {
+        this.spawnTimer -= dt;
+        if (this.spawnTimer <= 0) {
+          this.spawnEnemy(this.enemiesToSpawn.shift());
+          this.spawnTimer = 0.6;
+        }
+      }
+      this.dom.waveTimer.textContent = '';
+      // 全部清空 → 进入下一波间歇
+      if (this.enemiesToSpawn.length === 0 && this.enemies.length === 0) {
+        this.waveState = 'intro';
+        this.waveTimer = 5;
+        this.bestWave = Math.max(this.bestWave, this.wave);
+        this.toast(`第 ${this.wave} 波清剿完毕！`);
+        this.writeSave();
+      }
+    }
+  }
+
+  updateEnemies(dt) {
+    const alive = [];
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+
+      // 命中闪红处理
+      if (e.hitFlash > 0) {
+        e.hitFlash -= dt;
+        const flashing = e.hitFlash > 0;
+        for (const m of e.materials) {
+          m.mat.color.copy(flashing ? new THREE.Color(0xff3030) : m.base);
+        }
+      }
+
+      // 冻结状态
+      let speedMul = 1;
+      if (e.frozen > 0) {
+        e.frozen -= dt; speedMul = 0.25;
+        for (const m of e.materials) m.mat.color.lerp(new THREE.Color(0x8fd4ff), 0.3);
+      }
+
+      const toPlayer = this.player.position.clone().sub(e.mesh.position);
+      toPlayer.y = 0;
+      const dist = toPlayer.length();
+      toPlayer.normalize();
+
+      if (e.ranged) {
+        // 远程：保持距离并射击
+        if (dist > e.range) e.mesh.position.addScaledVector(toPlayer, e.speed * speedMul * dt);
+        else if (dist < e.range - 4) e.mesh.position.addScaledVector(toPlayer, -e.speed * speedMul * dt);
+        e.fireTimer -= dt;
+        if (e.fireTimer <= 0 && dist <= e.range && e.frozen <= 0) {
+          e.fireTimer = e.fireRate;
+          this.spawnEnemyProjectile(e);
+        }
+      } else {
+        // 近战：追击玩家
+        const stopDist = e.radius + 1.2;
+        if (dist > stopDist) {
+          e.mesh.position.addScaledVector(toPlayer, e.speed * speedMul * dt);
+        } else {
+          // 巨兽有前摇（telegraph）
+          if (e.telegraph > 0) {
+            if (!e.telegraphing && e.attackCd <= 0) {
+              e.telegraphing = true; e.telegraphTimer = e.telegraph;
+            }
+            if (e.telegraphing) {
+              e.telegraphTimer -= dt;
+              // 前摇时放大+变红
+              const s = ENEMY_TYPES[e.type].scale * (1 + (e.telegraph - e.telegraphTimer) * 0.15);
+              e.mesh.scale.setScalar(s);
+              if (e.telegraphTimer <= 0) {
+                e.telegraphing = false;
+                e.mesh.scale.setScalar(ENEMY_TYPES[e.type].scale);
+                if (dist <= stopDist + 0.5) this.damagePlayer(e.dmg);
+                e.attackCd = 1.5;
+              }
+            }
+          } else {
+            if (e.attackCd <= 0) { this.damagePlayer(e.dmg); e.attackCd = 1.0; }
+          }
+        }
+      }
+      if (e.attackCd > 0) e.attackCd -= dt;
+
+      // 朝向玩家
+      e.mesh.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
+      // 简单的上下浮动动画
+      e.mesh.position.y = Math.abs(Math.sin(performance.now() * 0.005 + e.mesh.id)) * 0.1;
+
+      alive.push(e);
+    }
+    this.enemies = alive;
+    this.dom.enemyCount.textContent = `敌人: ${this.enemies.length + this.enemiesToSpawn.length}`;
+  }
+
+  spawnEnemyProjectile(e) {
+    const origin = e.mesh.position.clone(); origin.y = 1.3;
+    const dir = this.player.position.clone().setY(1.3).sub(origin).normalize();
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25, 10, 10),
+      new THREE.MeshBasicMaterial({ color: 0xb44aff })
+    );
+    mesh.position.copy(origin);
+    const light = new THREE.PointLight(0x8a2aff, 1, 5, 2); mesh.add(light);
+    this.scene.add(mesh);
+    this.enemyProjectiles.push({ mesh, dir, speed: e.projSpeed, dmg: e.dmg, life: 4, radius: 0.4 });
+  }
+
+  updateProjectiles(dt) {
+    const alive = [];
+    for (const p of this.projectiles) {
+      p.life -= dt;
+      p.mesh.position.addScaledVector(p.dir, p.speed * dt);
+      // 火焰拖尾
+      if (Math.random() < 0.5) this.spawnTrailSpark(p.mesh.position, 0xff8a3a);
+      let hit = false;
+      for (const e of this.enemies) {
+        if (e.mesh.position.distanceTo(p.mesh.position) < e.radius + p.radius) {
+          const isCrit = p.crit;
+          this.damageEnemy(e, p.dmg, isCrit);
+          this.audio.impact();
+          this.spawnParticles(p.mesh.position.clone(), 0xff6a2b, 14);
+          hit = true; break;
+        }
+      }
+      if (hit || p.life <= 0 || p.mesh.position.length() > ARENA_RADIUS + 5) {
+        this.scene.remove(p.mesh);
+      } else alive.push(p);
+    }
+    this.projectiles = alive;
+  }
+
+  spawnTrailSpark(pos, color) {
+    // 轻量拖尾：复用粒子系统的单点
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([pos.x, pos.y, pos.z]), 3));
+    const mat = new THREE.PointsMaterial({ color, size: 0.4, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+    const pts = new THREE.Points(geo, mat);
+    this.scene.add(pts);
+    this.particleBursts.push({ points: pts, velocities: [new THREE.Vector3(0, 0.5, 0)], life: 0.3, maxLife: 0.3 });
+  }
+
+  updateEnemyProjectiles(dt) {
+    const alive = [];
+    for (const p of this.enemyProjectiles) {
+      p.life -= dt;
+      p.mesh.position.addScaledVector(p.dir, p.speed * dt);
+      let hit = false;
+      if (p.mesh.position.distanceTo(this.player.position.clone().setY(1.3)) < 1.0 + p.radius) {
+        this.damagePlayer(p.dmg);
+        this.spawnParticles(p.mesh.position.clone(), 0xb44aff, 12);
+        hit = true;
+      }
+      if (hit || p.life <= 0 || p.mesh.position.length() > ARENA_RADIUS + 5) {
+        this.scene.remove(p.mesh);
+      } else alive.push(p);
+    }
+    this.enemyProjectiles = alive;
+  }
+
+  updateOrbs(dt) {
+    const alive = [];
+    for (const o of this.orbs) {
+      o.life -= dt;
+      o.phase += dt * 3;
+      o.mesh.position.y = 0.6 + Math.sin(o.phase) * 0.15;
+      o.mesh.rotation.y += dt * 2;
+      const dist = o.mesh.position.distanceTo(this.player.position);
+      // 磁吸
+      if (dist < 5) {
+        const pull = this.player.position.clone().sub(o.mesh.position).normalize();
+        o.mesh.position.addScaledVector(pull, (6 - dist) * dt * 2);
+      }
+      if (dist < 1.2) {
+        // 拾取
+        this.gainXp(o.xp);
+        this.audio.pickup();
+        if (o.relic) this.pickupRelic(o.relic);
+        this.scene.remove(o.mesh);
+        continue;
+      }
+      if (o.life <= 0) { this.scene.remove(o.mesh); continue; }
+      alive.push(o);
+    }
+    this.orbs = alive;
+  }
+
+  pickupRelic(key) {
+    this.relicCounts[key] = (this.relicCounts[key] || 0) + 1;
+    this.recomputeStats();
+    // 拾取时补满因加成而增长的生命/法力上限差额
+    this.hp = Math.min(this.maxHp, this.hp + 30);
+    const r = RELICS[key];
+    this.toast(`获得圣物：${r.icon} ${r.name}`);
+    this.renderPassiveGrid();
+    this.writeSave();
+    this.updateHud();
+  }
+
+  updateCooldowns(dt) {
+    for (let i = 0; i < this.skillCooldowns.length; i++) {
+      if (this.skillCooldowns[i] > 0) {
+        this.skillCooldowns[i] -= dt;
+        if (this.skillCooldowns[i] < 0) this.skillCooldowns[i] = 0;
+      }
+      // 更新冷却遮罩
+      const overlay = this.dom.slots[i].querySelector('.cd-overlay');
+      const ratio = this.skillCooldowns[i] / SKILLS[i].cooldown;
+      overlay.style.transform = `scaleY(${Math.max(0, ratio)})`;
+      // 法力不足视觉
+      const cost = SKILLS[i].manaCost * (1 - this.stats.manaDiscount);
+      this.dom.slots[i].classList.toggle('no-mana', this.mp < cost);
+    }
+  }
+
+  regen(dt) {
+    // 法力自然回复
+    this.mp = Math.min(this.maxMp, this.mp + (6 + this.stats.mpRegenBonus) * dt);
+    // 生命极缓慢回复
+    this.hp = Math.min(this.maxHp, this.hp + 0.5 * dt);
+    this.updateHudBars();
+  }
+
+  updateParticles(dt) {
+    const alive = [];
+    for (const b of this.particleBursts) {
+      b.life -= dt;
+      const pos = b.points.geometry.attributes.position;
+      for (let i = 0; i < b.velocities.length; i++) {
+        const v = b.velocities[i];
+        v.y -= 12 * dt;   // 重力
+        pos.setXYZ(i, pos.getX(i) + v.x * dt, pos.getY(i) + v.y * dt, pos.getZ(i) + v.z * dt);
+      }
+      pos.needsUpdate = true;
+      b.points.material.opacity = Math.max(0, b.life / b.maxLife);
+      if (b.life <= 0) { this.scene.remove(b.points); b.points.geometry.dispose(); b.points.material.dispose(); }
+      else alive.push(b);
+    }
+    this.particleBursts = alive;
+  }
+
+  updateAoe(dt) {
+    const alive = [];
+    for (const a of this.aoeEffects) {
+      a.life -= dt;
+      const t = 1 - a.life / a.maxLife;
+      if (a.kind === 'frost') {
+        const r = a.maxR * t;
+        a.mesh.scale.setScalar(r);
+        a.mesh.material.opacity = 0.7 * (1 - t);
+      } else if (a.kind === 'dash') {
+        a.mesh.material.opacity = a.life / a.maxLife;
+      }
+      if (a.life <= 0) { this.scene.remove(a.mesh); }
+      else alive.push(a);
+    }
+    this.aoeEffects = alive;
+  }
+
+  updateCamera(dt) {
+    // 第三人称跟随相机：基于 yaw/pitch 环绕玩家
+    const target = this.player.position.clone(); target.y += 1.6;
+    const offset = new THREE.Vector3(
+      Math.sin(this.cameraYaw) * Math.cos(this.cameraPitch),
+      Math.sin(this.cameraPitch),
+      Math.cos(this.cameraYaw) * Math.cos(this.cameraPitch)
+    ).multiplyScalar(this.cameraDist);
+    const desired = target.clone().add(offset);
+    this.camera.position.lerp(desired, Math.min(1, dt * 10));
+    this.camera.lookAt(target);
+  }
+
+  /* ============================================================
+     10. HUD 更新
+  ============================================================ */
+  updateHud() {
+    this.updateHudBars();
+    this.dom.levelBadge.textContent = this.stats.level;
+    this.dom.waveNum.textContent = this.wave;
+    this.dom.statAtk.textContent = Math.round(this.atk);
+    this.dom.statSpd.textContent = this.speed.toFixed(1);
+    this.dom.statCrit.textContent = Math.round(this.crit * 100) + '%';
+    // 背包属性
+    if (this.dom.inventory.classList.contains('open')) this.updateInventoryStats();
+  }
+
+  updateHudBars() {
+    const hpPct = Math.max(0, this.hp / this.maxHp) * 100;
+    const mpPct = Math.max(0, this.mp / this.maxMp) * 100;
+    this.dom.hpFill.style.width = hpPct + '%';
+    this.dom.mpFill.style.width = mpPct + '%';
+    this.dom.hpLabel.textContent = `${Math.ceil(this.hp)} / ${Math.round(this.maxHp)}`;
+    this.dom.mpLabel.textContent = `${Math.ceil(this.mp)} / ${Math.round(this.maxMp)}`;
+    const xpPct = (this.stats.xp / this.stats.xpNext) * 100;
+    this.dom.xpFill.style.width = xpPct + '%';
+    this.dom.xpText.textContent = `XP ${Math.floor(this.stats.xp)} / ${this.stats.xpNext}`;
+  }
+
+  /* ---------------- 浮动战斗文字 ---------------- */
+  floatText(worldPos, value, kind, isCrit) {
+    const v = worldPos.clone(); v.project(this.camera);
+    if (v.z > 1) return;   // 在相机背后
+    const x = (v.x * 0.5 + 0.5) * innerWidth;
+    const y = (-v.y * 0.5 + 0.5) * innerHeight;
+    const el = document.createElement('div');
+    el.className = 'float-text' + (isCrit ? ' crit' : '');
+    let color = '#ffffff';
+    if (kind === 'player') { color = '#ff6a7a'; el.textContent = '-' + value; }
+    else if (kind === 'crit') { color = '#ffd24d'; el.textContent = value + '!'; }
+    else { color = '#ffe0e0'; el.textContent = value; }
+    el.style.color = color;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.transform = 'translate(-50%,-50%)';
+    this.dom.floating.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+
+  toast(msg) {
+    this.dom.toast.textContent = msg;
+    this.dom.toast.classList.add('show');
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => this.dom.toast.classList.remove('show'), 2000);
+  }
+
+  /* ============================================================
+     11. 背包 / 圣物 UI
+  ============================================================ */
+  toggleInventory() {
+    const inv = this.dom.inventory;
+    inv.classList.toggle('open');
+    if (inv.classList.contains('open')) {
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.updateInventoryStats();
+      this.renderPassiveGrid();
+    }
+  }
+
+  updateInventoryStats() {
+    document.getElementById('inv-hp').textContent = Math.round(this.maxHp);
+    document.getElementById('inv-mp').textContent = Math.round(this.maxMp);
+    document.getElementById('inv-atk').textContent = Math.round(this.atk);
+    document.getElementById('inv-spd').textContent = this.speed.toFixed(1);
+    document.getElementById('inv-crit').textContent = Math.round(this.crit * 100) + '%';
+    document.getElementById('inv-misc').textContent =
+      Math.round(this.stats.lifesteal * 100) + '% / ' + Math.round(this.stats.manaDiscount * 100) + '%';
+  }
+
+  renderPassiveGrid() {
+    const grid = this.dom.passiveGrid;
+    grid.innerHTML = '';
+    // 每种圣物一个格子（有数量的显示，其余显示空格）
+    const owned = RELIC_KEYS.filter(k => this.relicCounts[k] > 0);
+    const totalSlots = 18;
+    for (let i = 0; i < totalSlots; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'inv-slot';
+      if (i < owned.length) {
+        const key = owned[i];
+        const r = RELICS[key];
+        cell.classList.add('filled');
+        cell.innerHTML = `${r.icon}<span class="stack">${this.relicCounts[key]}</span>`;
+        cell.addEventListener('mouseenter', (e) => this.showTooltip(e, r, this.relicCounts[key]));
+        cell.addEventListener('mousemove', (e) => this.moveTooltip(e));
+        cell.addEventListener('mouseleave', () => this.hideTooltip());
+      }
+      grid.appendChild(cell);
+    }
+  }
+
+  showTooltip(e, relic, count) {
+    const tt = this.dom.tooltip;
+    tt.querySelector('.t-name').textContent = `${relic.icon} ${relic.name}`;
+    tt.querySelector('.t-desc').textContent = relic.desc;
+    tt.querySelector('.t-count').textContent = `持有数量: ${count}`;
+    tt.style.display = 'block';
+    this.moveTooltip(e);
+  }
+  moveTooltip(e) {
+    const tt = this.dom.tooltip;
+    tt.style.left = (e.clientX + 16) + 'px';
+    tt.style.top = (e.clientY + 16) + 'px';
+  }
+  hideTooltip() { this.dom.tooltip.style.display = 'none'; }
+}
+
+// ---- 启动 ----
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    window.__game = new Game();
+  } catch (err) {
+    document.getElementById('loading').innerHTML = '<div style="color:#ff6a7a;padding:40px;text-align:center">加载失败：' + err.message + '</div>';
+    console.error(err);
+  }
+});
+</script>
+</body>
+</html>
